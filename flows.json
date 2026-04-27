@@ -1,0 +1,4417 @@
+[
+  {
+    "id": "tab-polling",
+    "type": "tab",
+    "label": "1. Long Polling",
+    "disabled": false
+  },
+  {
+    "id": "tab-router",
+    "type": "tab",
+    "label": "2. Update Router",
+    "disabled": false
+  },
+  {
+    "id": "tab-commands",
+    "type": "tab",
+    "label": "3. Command Handlers",
+    "disabled": false
+  },
+  {
+    "id": "tab-callbacks",
+    "type": "tab",
+    "label": "4. Callback Handlers",
+    "disabled": false
+  },
+  {
+    "id": "tab-fsm",
+    "type": "tab",
+    "label": "5. FSM Dialogs",
+    "disabled": false
+  },
+  {
+    "id": "tab-ai-intent",
+    "type": "tab",
+    "label": "6. AI Intent Parser",
+    "disabled": false,
+    "info": "Free-text intent parsing and intent action routing."
+  },
+  {
+    "id": "tab-gift-ai",
+    "type": "tab",
+    "label": "7. Gift AI Generator",
+    "disabled": false,
+    "info": "Gift idea generation, persistence, and rendering."
+  },
+  {
+    "id": "tab-sender",
+    "type": "tab",
+    "label": "8. Telegram Sender",
+    "disabled": false
+  },
+  {
+    "id": "tab-reminders",
+    "type": "tab",
+    "label": "9. Scheduled Reminders",
+    "disabled": false
+  },
+  {
+    "id": "tab-errors",
+    "type": "tab",
+    "label": "10. Errors + Audit",
+    "disabled": false
+  },
+  {
+    "id": "pg-config",
+    "type": "postgreSQLConfig",
+    "name": "birthday_bot",
+    "host": "PGHOST",
+    "hostFieldType": "env",
+    "port": "PGPORT",
+    "portFieldType": "env",
+    "database": "PGDATABASE",
+    "databaseFieldType": "env",
+    "ssl": false,
+    "sslFieldType": "bool",
+    "applicationName": "node-red-birthday-bot",
+    "applicationNameType": "str",
+    "max": 10,
+    "maxFieldType": "num",
+    "idle": 1000,
+    "idleFieldType": "num",
+    "connectionTimeout": 10000,
+    "user": "PGUSER",
+    "userFieldType": "env",
+    "password": "PGPASSWORD",
+    "passwordFieldType": "env"
+  },
+  {
+    "id": "c-polling-title",
+    "type": "comment",
+    "z": "tab-polling",
+    "name": "LONG POLLING + IDEMPOTENCY",
+    "info": "",
+    "x": 180,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "startup-init",
+    "type": "inject",
+    "z": "tab-polling",
+    "name": "Startup — register helpers",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "once": true,
+    "onceDelay": "0.5",
+    "payload": "",
+    "payloadType": "date",
+    "x": 180,
+    "y": 140,
+    "wires": [
+      [
+        "init-helpers"
+      ]
+    ]
+  },
+  {
+    "id": "init-helpers",
+    "type": "function",
+    "z": "tab-polling",
+    "name": "Register shared data",
+    "func": "// Store DATA only — not functions (Node-RED function serialization issues)\n\nglobal.set('MENU_KB', [\n    [{ text: '➕ Додати', callback_data: 'menu_add' }, { text: '📋 Контакти', callback_data: 'menu_list' }],\n    [{ text: '⏰ Найближчі', callback_data: 'menu_upcoming' }, { text: '❓ Допомога', callback_data: 'menu_help' }]\n]);\n\nglobal.set('BACK_KB', [[{ text: '🏠 Меню', callback_data: 'menu_home' }]]);\n\nglobal.set('HELP_TEXT', [\n    '<b>🎂 Birthday Reminder Bot</b>', '',\n    'ДН близьких + AI-ідеї подарунків 🎁', '',\n    '<b>🔹 Функції:</b>',\n    '• Зберігаю контакти з ДН',\n    '• Нагадую за 7, 3, 1 день та у день',\n    '• AI-ідеї подарунків у гривнях',\n    '• Памʼятаю інтереси', '',\n    '<b>🗣 Пиши природньою мовою:</b>',\n    '• «додай Петра 15.03.1990»',\n    '• «коли у Олі ДН?»',\n    '• «що подарувати Тарасу?»',\n    '• «Петро любить футбол»',\n    '• «розкажи про Марію»',\n    '• «видали Дениса»',\n    '• «найближчі ДН»', '',\n    '<b>Команди:</b> /start /cancel /help'\n].join('\\n'));\n\nnode.warn('[INIT] MENU_KB, BACK_KB, HELP_TEXT registered');\nreturn null;",
+    "outputs": 1,
+    "x": 460,
+    "y": 140,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "poll-inject",
+    "type": "inject",
+    "z": "tab-polling",
+    "name": "every 2s",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "2",
+    "once": true,
+    "onceDelay": "3",
+    "payloadType": "date",
+    "x": 120,
+    "y": 340,
+    "wires": [
+      [
+        "poll-get-offset"
+      ]
+    ]
+  },
+  {
+    "id": "poll-get-offset",
+    "type": "postgresql",
+    "z": "tab-polling",
+    "name": "SELECT offset",
+    "query": "SELECT last_update_id FROM bot_offset WHERE id = 1",
+    "postgreSQLConfig": "pg-config",
+    "split": false,
+    "rowsPerMsg": 1,
+    "outputs": 1,
+    "x": 340,
+    "y": 340,
+    "wires": [
+      [
+        "poll-build-url"
+      ]
+    ]
+  },
+  {
+    "id": "poll-build-url",
+    "type": "function",
+    "z": "tab-polling",
+    "name": "Build getUpdates URL",
+    "func": "const token = env.get('TELEGRAM_BOT_TOKEN');\nif (!token) { node.error('TELEGRAM_BOT_TOKEN not set'); return null; }\nconst lastId = (msg.payload && msg.payload[0] && msg.payload[0].last_update_id) || 0;\nconst offset = Number(lastId) + 1;\nmsg.url = `${env.get('TELEGRAM_API_BASE')||'https://api.telegram.org'}/bot${token}/getUpdates?offset=${offset}&timeout=25&allowed_updates=[\"message\",\"callback_query\"]`;\nmsg.method = 'GET';\nreturn msg;",
+    "outputs": 1,
+    "x": 560,
+    "y": 340,
+    "wires": [
+      [
+        "poll-http"
+      ]
+    ]
+  },
+  {
+    "id": "poll-http",
+    "type": "http request",
+    "z": "tab-polling",
+    "name": "GET /getUpdates",
+    "method": "use",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "",
+    "persist": true,
+    "x": 780,
+    "y": 340,
+    "wires": [
+      [
+        "poll-check-ok"
+      ]
+    ]
+  },
+  {
+    "id": "poll-catch",
+    "type": "catch",
+    "z": "tab-polling",
+    "name": "silence socket errors",
+    "scope": [
+      "poll-http"
+    ],
+    "uncaught": false,
+    "x": 120,
+    "y": 220,
+    "wires": [
+      [
+        "poll-error-filter"
+      ]
+    ]
+  },
+  {
+    "id": "poll-error-filter",
+    "type": "function",
+    "z": "tab-polling",
+    "name": "ignore ECONNRESET/timeouts",
+    "func": "const err = msg.error || {};\nconst code = err.code || '';\nconst ignoreList = ['ECONNRESET','ETIMEDOUT','ECONNREFUSED','ECONNABORTED','UND_ERR_SOCKET'];\nif (ignoreList.includes(code) || /socket hang up|timeout/i.test(err.message || '')) {\n    // Тихо — це нормально при long polling\n    return null;\n}\n// Інші помилки — пропускаємо далі (у глобальний catch)\nnode.warn('HTTP error: ' + (err.message || code));\nreturn null;",
+    "outputs": 1,
+    "x": 430,
+    "y": 220,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "poll-check-ok",
+    "type": "function",
+    "z": "tab-polling",
+    "name": "Check response.ok",
+    "func": "if (!msg.payload || msg.payload.ok !== true) {\n    const code = msg.payload && msg.payload.error_code;\n    \n    if (code === 409) {\n        // Мовчазно — тільки статус на ноді, без warn\n        const count = (flow.get('conflictCount') || 0) + 1;\n        flow.set('conflictCount', count);\n        node.status({ fill: 'yellow', shape: 'ring', text: `409 conflict x${count}` });\n        return null;\n    }\n    \n    // Інші помилки — логуємо завжди\n    node.warn('getUpdates failed: '+JSON.stringify(msg.payload));\n    return null;\n}\n\n// Успіх — ресетимо\nif (flow.get('conflictCount')) {\n    flow.set('conflictCount', 0);\n    node.status({ fill: 'green', shape: 'dot', text: 'polling ok' });\n}\n\nconst updates = msg.payload.result || [];\nif (updates.length === 0) return null;\nmsg.payload = updates;\nreturn msg;",
+    "outputs": 1,
+    "x": 1000,
+    "y": 340,
+    "wires": [
+      [
+        "poll-split"
+      ]
+    ]
+  },
+  {
+    "id": "poll-split",
+    "type": "split",
+    "z": "tab-polling",
+    "name": "split",
+    "arraySplt": 1,
+    "arraySpltType": "len",
+    "x": 1220,
+    "y": 340,
+    "wires": [
+      [
+        "poll-idempotency"
+      ]
+    ]
+  },
+  {
+    "id": "poll-idempotency",
+    "type": "function",
+    "z": "tab-polling",
+    "name": "Prepare idempotency insert",
+    "func": "const update = msg.payload;\nmsg.update = update;\nmsg.updateId = update.update_id;\nmsg.query = 'INSERT INTO processed_updates (update_id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING update_id';\nmsg.params = [update.update_id];\nreturn msg;",
+    "outputs": 1,
+    "x": 180,
+    "y": 460,
+    "wires": [
+      [
+        "poll-pg-insert"
+      ]
+    ]
+  },
+  {
+    "id": "poll-pg-insert",
+    "type": "postgresql",
+    "z": "tab-polling",
+    "name": "INSERT processed_updates",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 480,
+    "y": 460,
+    "wires": [
+      [
+        "poll-check-new"
+      ]
+    ]
+  },
+  {
+    "id": "poll-check-new",
+    "type": "function",
+    "z": "tab-polling",
+    "name": "New? forward : drop",
+    "func": "const isNew = Array.isArray(msg.payload) && msg.payload.length > 0;\nif (!isNew) { node.log(`Update ${msg.updateId} already processed`); return null; }\nmsg.payload = msg.update;\nreturn [msg, { updateId: msg.updateId }];",
+    "outputs": 2,
+    "x": 740,
+    "y": 460,
+    "wires": [
+      [
+        "poll-to-router"
+      ],
+      [
+        "poll-update-offset"
+      ]
+    ]
+  },
+  {
+    "id": "poll-to-router",
+    "type": "link out",
+    "z": "tab-polling",
+    "name": "→ router",
+    "mode": "link",
+    "links": [
+      "router-in"
+    ],
+    "x": 1035,
+    "y": 460,
+    "wires": []
+  },
+  {
+    "id": "poll-update-offset",
+    "type": "function",
+    "z": "tab-polling",
+    "name": "Prepare offset update",
+    "func": "msg.query = 'UPDATE bot_offset SET last_update_id = $1, updated_at = NOW() WHERE id = 1 AND last_update_id < $1';\nmsg.params = [msg.updateId];\nreturn msg;",
+    "outputs": 1,
+    "x": 860,
+    "y": 540,
+    "wires": [
+      [
+        "poll-pg-offset"
+      ]
+    ]
+  },
+  {
+    "id": "poll-pg-offset",
+    "type": "postgresql",
+    "z": "tab-polling",
+    "name": "UPDATE bot_offset",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1110,
+    "y": 540,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "c-router-title",
+    "type": "comment",
+    "z": "tab-router",
+    "name": "UPDATE ROUTER",
+    "info": "",
+    "x": 210,
+    "y": 80,
+    "wires": []
+  },
+  {
+    "id": "router-in",
+    "type": "link in",
+    "z": "tab-router",
+    "name": "incoming",
+    "links": [
+      "poll-to-router"
+    ],
+    "x": 120,
+    "y": 160,
+    "wires": [
+      [
+        "router-extract"
+      ]
+    ]
+  },
+  {
+    "id": "router-extract",
+    "type": "function",
+    "z": "tab-router",
+    "name": "Extract user + load session",
+    "func": "const update = msg.payload;\nlet from, chatId, messageType, text, contact, callbackData, messageId;\n\nif (update.callback_query) {\n    from = update.callback_query.from;\n    chatId = update.callback_query.message.chat.id;\n    messageType = 'callback';\n    callbackData = update.callback_query.data;\n    messageId = update.callback_query.message.message_id;\n    msg.callbackQueryId = update.callback_query.id;\n} else if (update.message) {\n    from = update.message.from;\n    chatId = update.message.chat.id;\n    if (update.message.contact) { messageType = 'contact'; contact = update.message.contact; }\n    else if (update.message.text) { text = update.message.text.trim(); messageType = text.startsWith('/') ? 'command' : 'text'; }\n    else { messageType = 'other'; }\n    messageId = update.message.message_id;\n} else { node.warn('Unknown update type'); return null; }\n\nmsg.from = from; msg.chatId = chatId; msg.userId = from.id;\nmsg.messageType = messageType; msg.text = text; msg.contact = contact;\nmsg.callbackData = callbackData; msg.messageId = messageId;\n\nmsg.query = 'SELECT state, context FROM user_sessions WHERE telegram_id = $1';\nmsg.params = [from.id];\nreturn msg;",
+    "outputs": 1,
+    "x": 300,
+    "y": 160,
+    "wires": [
+      [
+        "router-pg-session"
+      ]
+    ]
+  },
+  {
+    "id": "router-pg-session",
+    "type": "postgresql",
+    "z": "tab-router",
+    "name": "SELECT session",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 560,
+    "y": 160,
+    "wires": [
+      [
+        "router-merge-session"
+      ]
+    ]
+  },
+  {
+    "id": "router-merge-session",
+    "type": "function",
+    "z": "tab-router",
+    "name": "Merge session",
+    "func": "const rows = msg.payload || [];\nmsg.session = rows.length ? { state: rows[0].state, context: rows[0].context } : { state: 'idle', context: null };\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 160,
+    "wires": [
+      [
+        "router-switch-type",
+        "dbg-router"
+      ]
+    ]
+  },
+  {
+    "id": "dbg-router",
+    "type": "debug",
+    "z": "tab-router",
+    "name": "DBG: incoming",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "complete": "true",
+    "targetType": "full",
+    "statusVal": "messageType + ' ' + session.state",
+    "statusType": "jsonata",
+    "x": 780,
+    "y": 240,
+    "wires": []
+  },
+  {
+    "id": "router-switch-type",
+    "type": "switch",
+    "z": "tab-router",
+    "name": "route by type",
+    "property": "messageType",
+    "propertyType": "msg",
+    "rules": [
+      {
+        "t": "eq",
+        "v": "command",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "callback",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "contact",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "text",
+        "vt": "str"
+      }
+    ],
+    "outputs": 4,
+    "x": 1000,
+    "y": 160,
+    "wires": [
+      [
+        "router-to-command"
+      ],
+      [
+        "router-to-callback"
+      ],
+      [
+        "router-to-contact"
+      ],
+      [
+        "router-to-text"
+      ]
+    ]
+  },
+  {
+    "id": "router-to-command",
+    "type": "link out",
+    "z": "tab-router",
+    "name": "→ command",
+    "mode": "link",
+    "links": [
+      "cmd-in"
+    ],
+    "x": 1220,
+    "y": 80,
+    "wires": []
+  },
+  {
+    "id": "router-to-callback",
+    "type": "link out",
+    "z": "tab-router",
+    "name": "→ callback",
+    "mode": "link",
+    "links": [
+      "cb-in"
+    ],
+    "x": 1220,
+    "y": 160,
+    "wires": []
+  },
+  {
+    "id": "router-to-contact",
+    "type": "link out",
+    "z": "tab-router",
+    "name": "→ contact",
+    "mode": "link",
+    "links": [
+      "contact-in"
+    ],
+    "x": 1220,
+    "y": 240,
+    "wires": []
+  },
+  {
+    "id": "router-to-text",
+    "type": "link out",
+    "z": "tab-router",
+    "name": "→ text",
+    "mode": "link",
+    "links": [
+      "text-in"
+    ],
+    "x": 1220,
+    "y": 320,
+    "wires": []
+  },
+  {
+    "id": "c-cmd-title",
+    "type": "comment",
+    "z": "tab-commands",
+    "name": "COMMAND HANDLERS",
+    "info": "",
+    "x": 230,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "cmd-in",
+    "type": "link in",
+    "z": "tab-commands",
+    "name": "command",
+    "links": [
+      "router-to-command"
+    ],
+    "x": 120,
+    "y": 140,
+    "wires": [
+      [
+        "cmd-parse"
+      ]
+    ]
+  },
+  {
+    "id": "cmd-parse",
+    "type": "function",
+    "z": "tab-commands",
+    "name": "Parse command",
+    "func": "const parts = msg.text.split(/\\s+/);\nconst cmd = parts[0].toLowerCase().split('@')[0];\nmsg.command = cmd;\nmsg.args = parts.slice(1);\nreturn msg;",
+    "outputs": 1,
+    "x": 340,
+    "y": 140,
+    "wires": [
+      [
+        "cmd-switch"
+      ]
+    ]
+  },
+  {
+    "id": "cmd-switch",
+    "type": "switch",
+    "z": "tab-commands",
+    "name": "switch cmd",
+    "property": "command",
+    "propertyType": "msg",
+    "rules": [
+      {
+        "t": "eq",
+        "v": "/start",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "/help",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "/cancel",
+        "vt": "str"
+      },
+      {
+        "t": "else"
+      }
+    ],
+    "outputs": 4,
+    "x": 560,
+    "y": 140,
+    "wires": [
+      [
+        "cmd-start"
+      ],
+      [
+        "cmd-help"
+      ],
+      [
+        "cmd-cancel"
+      ],
+      [
+        "cmd-unknown"
+      ]
+    ]
+  },
+  {
+    "id": "cmd-start",
+    "type": "function",
+    "z": "tab-commands",
+    "name": "/start — upsert user",
+    "func": "msg.query = `INSERT INTO users (telegram_id, username, first_name, last_name, language_code) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (telegram_id) DO UPDATE SET username=EXCLUDED.username, first_name=EXCLUDED.first_name, last_name=EXCLUDED.last_name, language_code=EXCLUDED.language_code, is_active=TRUE RETURNING telegram_id, first_name, phone_number`;\nmsg.params = [\n    msg.from.id,\n    msg.from.username || null,\n    msg.from.first_name || msg.from.username || 'User',\n    msg.from.last_name || null,\n    msg.from.language_code || null\n];\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 80,
+    "wires": [
+      [
+        "cmd-start-pg"
+      ]
+    ]
+  },
+  {
+    "id": "cmd-start-pg",
+    "type": "postgresql",
+    "z": "tab-commands",
+    "name": "UPSERT user",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1000,
+    "y": 80,
+    "wires": [
+      [
+        "cmd-start-session"
+      ]
+    ]
+  },
+  {
+    "id": "cmd-start-session",
+    "type": "function",
+    "z": "tab-commands",
+    "name": "Upsert session idle",
+    "func": "msg.userRow = msg.payload[0];\nmsg.query = `INSERT INTO user_sessions (telegram_id, state, context) VALUES ($1,'idle',NULL) ON CONFLICT (telegram_id) DO UPDATE SET state='idle', context=NULL`;\nmsg.params = [msg.from.id];\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 160,
+    "wires": [
+      [
+        "cmd-start-session-pg"
+      ]
+    ]
+  },
+  {
+    "id": "cmd-start-session-pg",
+    "type": "postgresql",
+    "z": "tab-commands",
+    "name": "UPSERT session",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1000,
+    "y": 160,
+    "wires": [
+      [
+        "cmd-start-reply"
+      ]
+    ]
+  },
+  {
+    "id": "cmd-start-reply",
+    "type": "function",
+    "z": "tab-commands",
+    "name": "Reply — welcome or menu",
+    "func": "function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\nconst mainMenu = global.get('MENU_KB');\nconst hasPhone = msg.userRow && msg.userRow.phone_number;\nconst firstName = msg.userRow ? msg.userRow.first_name : 'друже';\nconst photoUrl = env.get('MENU_PHOTO_URL');\n\nmsg.auditAction = 'user_registered';\nmsg.auditPayload = { username: msg.from.username };\n\nif (!hasPhone) {\n    msg.tgMethod = 'sendMessage';\n    msg.tgBody = {\n        chat_id: msg.chatId,\n        text: `👋 Привіт, <b>${esc(firstName)}</b>!\\n\\n🎂 Я — твій особистий нагадувач про дні народження.\\n\\n<b>✨ Що я вмію:</b>\\n• Зберігати ДН близьких\\n• Нагадувати за 7, 3, 1 день та у день\\n• Підбирати ідеї подарунків з AI\\n• Памʼятати інтереси кожного\\n\\n<b>💬 Найкраще — просто пиши як людині:</b>\\n<i>«додай Олю 15 березня 1990»</i>\\n<i>«що подарувати Петру?»</i>\\n\\n📱 Для початку поділись контактом:`,\n        parse_mode: 'HTML',\n        reply_markup: {\n            keyboard: [[{ text: '📱 Поділитись контактом', request_contact: true }]],\n            resize_keyboard: true,\n            one_time_keyboard: true\n        }\n    };\n} else {\n    const caption = [\n        `👋 З поверненням, <b>${esc(firstName)}</b>!`,\n        '',\n        '💬 <b>Нагадую — пиши як людині:</b>',\n        '<i>«додай Олю 15 березня 1990»</i>',\n        '<i>«що подарувати Петру?»</i>',\n        '<i>«коли у Марії ДН?»</i>',\n        '<i>«Петро фанат футболу»</i>',\n        '',\n        '📋 Або обирай дію з меню ⬇️'\n    ].join('\\n');\n    if (photoUrl) {\n        msg.tgMethod = 'sendPhoto';\n        msg.tgBody = { chat_id: msg.chatId, photo: photoUrl, caption, parse_mode: 'HTML', reply_markup: { inline_keyboard: mainMenu } };\n    } else {\n        msg.tgMethod = 'sendMessage';\n        msg.tgBody = { chat_id: msg.chatId, text: caption, parse_mode: 'HTML', reply_markup: { inline_keyboard: mainMenu } };\n    }\n}\n\nreturn msg;",
+    "outputs": 1,
+    "x": 1220,
+    "y": 160,
+    "wires": [
+      [
+        "cmd-to-sender",
+        "audit-out"
+      ]
+    ]
+  },
+  {
+    "id": "cmd-help",
+    "type": "function",
+    "z": "tab-commands",
+    "name": "/help",
+    "func": "function buildReply(o){\n  const b = { chat_id: o.chatId, parse_mode: \"HTML\" };\n  if (o.useEdit && o.messageId) b.message_id = o.messageId;\n  if (o.useEdit && o.photo) return { method: \"editMessageMedia\", body: Object.assign(b, { media: { type:\"photo\", media: o.photo, caption: o.text, parse_mode: \"HTML\" }, reply_markup: { inline_keyboard: o.keyboard } }) };\n  if (o.useEdit) return { method: \"editMessageText\", body: Object.assign(b, { text: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n  if (o.photo) return { method: \"sendPhoto\", body: Object.assign(b, { photo: o.photo, caption: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n  return { method: \"sendMessage\", body: Object.assign(b, { text: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n}\nconst reply = buildReply({\n    chatId: msg.chatId,\n    photo: env.get('MENU_PHOTO_HELP'),\n    text: global.get('HELP_TEXT'),\n    keyboard: global.get('BACK_KB')\n});\nmsg.tgMethod = reply.method;\nmsg.tgBody = reply.body;\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 260,
+    "wires": [
+      [
+        "cmd-to-sender"
+      ]
+    ]
+  },
+  {
+    "id": "cmd-cancel",
+    "type": "function",
+    "z": "tab-commands",
+    "name": "/cancel",
+    "func": "msg.query = `UPDATE user_sessions SET state='idle', context=NULL WHERE telegram_id=$1`;\nmsg.params = [msg.from.id];\nmsg._useEdit = false;\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 360,
+    "wires": [
+      [
+        "cmd-to-render-cancel"
+      ]
+    ]
+  },
+  {
+    "id": "cmd-unknown",
+    "type": "function",
+    "z": "tab-commands",
+    "name": "unknown cmd",
+    "func": "msg.tgMethod = 'sendMessage';\nmsg.tgBody = { chat_id: msg.chatId, text: 'Не знаю такої команди. Просто напиши що тобі треба природньою мовою — я зрозумію 😊' };\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 460,
+    "wires": [
+      [
+        "cmd-to-sender"
+      ]
+    ]
+  },
+  {
+    "id": "contact-in",
+    "type": "link in",
+    "z": "tab-commands",
+    "name": "contact shared",
+    "links": [
+      "router-to-contact"
+    ],
+    "x": 120,
+    "y": 600,
+    "wires": [
+      [
+        "cmd-contact-save"
+      ]
+    ]
+  },
+  {
+    "id": "cmd-contact-save",
+    "type": "function",
+    "z": "tab-commands",
+    "name": "Save phone (own only)",
+    "func": "const contact = msg.contact;\nif (contact.user_id !== msg.from.id) {\n    msg.tgMethod='sendMessage';\n    msg.tgBody={chat_id:msg.chatId,text:'Будь ласка, поділись <b>своїм</b> контактом.',parse_mode:'HTML'};\n    return [null, msg];\n}\nmsg.query = 'UPDATE users SET phone_number=$1 WHERE telegram_id=$2 RETURNING first_name';\nmsg.params = [contact.phone_number, msg.from.id];\nreturn [msg, null];",
+    "outputs": 2,
+    "x": 340,
+    "y": 600,
+    "wires": [
+      [
+        "cmd-contact-pg"
+      ],
+      [
+        "cmd-to-sender"
+      ]
+    ]
+  },
+  {
+    "id": "cmd-contact-pg",
+    "type": "postgresql",
+    "z": "tab-commands",
+    "name": "UPDATE phone",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 560,
+    "y": 600,
+    "wires": [
+      [
+        "cmd-contact-reply"
+      ]
+    ]
+  },
+  {
+    "id": "cmd-contact-reply",
+    "type": "function",
+    "z": "tab-commands",
+    "name": "Welcome + tutorial",
+    "func": "function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\nconst name = msg.payload && msg.payload[0] ? msg.payload[0].first_name : 'друже';\n\nmsg.tgMethod = 'sendMessage';\nmsg.tgBody = {\n    chat_id: msg.chatId,\n    text: `🎉 Чудово, <b>${esc(name)}</b>! Реєстрація завершена.`,\n    parse_mode: 'HTML',\n    reply_markup: { remove_keyboard: true }\n};\n\nmsg._followup = {\n    chat_id: msg.chatId,\n    text: [\n        '🎓 <b>Як користуватись ботом</b>',\n        '',\n        '💬 <b>Спілкуйся як з людиною</b> — просто пиши що треба:',\n        '',\n        '📝 <b>Додати контакт:</b>',\n        '<i>«додай Олю 15 березня 1990, любить книги»</i>',\n        '',\n        '🎂 <b>Запитати про ДН:</b>',\n        '<i>«коли у Марії ДН?»</i>',\n        '',\n        '🎁 <b>AI підбере подарунок:</b>',\n        '<i>«що подарувати Петру?»</i>',\n        '',\n        '💡 <b>Додати інтереси пізніше:</b>',\n        '<i>«Петро фанат футболу»</i>',\n        '',\n        '📋 Або використовуй кнопки меню ⬇️'\n    ].join('\\n'),\n    parse_mode: 'HTML',\n    reply_markup: { inline_keyboard: global.get('MENU_KB') }\n};\nmsg.auditAction = 'contact_shared';\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 600,
+    "wires": [
+      [
+        "cmd-to-sender",
+        "cmd-contact-followup",
+        "audit-out"
+      ]
+    ]
+  },
+  {
+    "id": "cmd-contact-followup",
+    "type": "function",
+    "z": "tab-commands",
+    "name": "send menu after",
+    "func": "if (!msg._followup) return null;\nconst m = { tgMethod:'sendMessage', tgBody: msg._followup, chatId: msg.chatId };\nreturn m;",
+    "outputs": 1,
+    "x": 1000,
+    "y": 600,
+    "wires": [
+      [
+        "cmd-to-sender"
+      ]
+    ]
+  },
+  {
+    "id": "text-in",
+    "type": "link in",
+    "z": "tab-commands",
+    "name": "free text",
+    "links": [
+      "router-to-text"
+    ],
+    "x": 115,
+    "y": 800,
+    "wires": [
+      [
+        "text-router"
+      ]
+    ]
+  },
+  {
+    "id": "text-router",
+    "type": "switch",
+    "z": "tab-commands",
+    "name": "by FSM state",
+    "property": "session.state",
+    "propertyType": "msg",
+    "rules": [
+      {
+        "t": "eq",
+        "v": "awaiting_name",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "awaiting_birthday",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "awaiting_interests",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "clarify_name",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "confirming_add",
+        "vt": "str"
+      },
+      {
+        "t": "else"
+      }
+    ],
+    "outputs": 6,
+    "x": 330,
+    "y": 800,
+    "wires": [
+      [
+        "text-to-fsm-name"
+      ],
+      [
+        "text-to-fsm-birthday"
+      ],
+      [
+        "text-to-fsm-interests"
+      ],
+      [
+        "text-to-clarify"
+      ],
+      [
+        "text-to-refine"
+      ],
+      [
+        "text-to-ai-intent"
+      ]
+    ]
+  },
+  {
+    "id": "text-to-clarify",
+    "type": "link out",
+    "z": "tab-commands",
+    "name": "→ clarify",
+    "mode": "link",
+    "links": [
+      "clarify-in"
+    ],
+    "x": 555,
+    "y": 880,
+    "wires": []
+  },
+  {
+    "id": "text-to-fsm-name",
+    "type": "link out",
+    "z": "tab-commands",
+    "name": "→ FSM name",
+    "mode": "link",
+    "links": [
+      "fsm-name-in"
+    ],
+    "x": 565,
+    "y": 700,
+    "wires": []
+  },
+  {
+    "id": "text-to-fsm-birthday",
+    "type": "link out",
+    "z": "tab-commands",
+    "name": "→ FSM birthday",
+    "mode": "link",
+    "links": [
+      "fsm-birthday-in"
+    ],
+    "x": 555,
+    "y": 760,
+    "wires": []
+  },
+  {
+    "id": "text-to-fsm-interests",
+    "type": "link out",
+    "z": "tab-commands",
+    "name": "→ FSM interests",
+    "mode": "link",
+    "links": [
+      "fsm-interests-in"
+    ],
+    "x": 555,
+    "y": 820,
+    "wires": []
+  },
+  {
+    "id": "text-to-ai-intent",
+    "type": "link out",
+    "z": "tab-commands",
+    "name": "→ AI intent",
+    "mode": "link",
+    "links": [
+      "ai-intent-in"
+    ],
+    "x": 555,
+    "y": 1040,
+    "wires": []
+  },
+  {
+    "id": "cmd-to-sender",
+    "type": "link out",
+    "z": "tab-commands",
+    "name": "→ sender",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 1440,
+    "y": 160,
+    "wires": []
+  },
+  {
+    "id": "audit-out",
+    "type": "link out",
+    "z": "tab-commands",
+    "name": "→ audit",
+    "mode": "link",
+    "links": [
+      "audit-in"
+    ],
+    "x": 1440,
+    "y": 240,
+    "wires": []
+  },
+  {
+    "id": "text-to-refine",
+    "type": "link out",
+    "z": "tab-commands",
+    "name": "→ refine add",
+    "mode": "link",
+    "links": [
+      "refine-add-in"
+    ],
+    "x": 555,
+    "y": 960,
+    "wires": []
+  },
+  {
+    "id": "cmd-to-render-cancel",
+    "type": "link out",
+    "z": "tab-commands",
+    "name": "-> cancel renderer",
+    "mode": "link",
+    "links": [
+      "render-cancel-in"
+    ],
+    "x": 1000,
+    "y": 360,
+    "wires": []
+  },
+  {
+    "id": "c-cb-title",
+    "type": "comment",
+    "z": "tab-callbacks",
+    "name": "CALLBACK HANDLERS - inline actions",
+    "info": "",
+    "x": 250,
+    "y": 80,
+    "wires": []
+  },
+  {
+    "id": "cb-in",
+    "type": "link in",
+    "z": "tab-callbacks",
+    "name": "callback",
+    "links": [
+      "router-to-callback"
+    ],
+    "x": 120,
+    "y": 160,
+    "wires": [
+      [
+        "cb-ack"
+      ]
+    ]
+  },
+  {
+    "id": "cb-ack",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "answerCallbackQuery + route",
+    "func": "const ack = { tgMethod:'answerCallbackQuery', tgBody:{ callback_query_id: msg.callbackQueryId } };\nmsg._useEdit = true;  // всі callbacks редагують існуюче повідомлення\nreturn [ack, msg];",
+    "outputs": 2,
+    "x": 340,
+    "y": 160,
+    "wires": [
+      [
+        "cb-send-nav"
+      ],
+      [
+        "cb-switch"
+      ]
+    ]
+  },
+  {
+    "id": "cb-switch",
+    "type": "switch",
+    "z": "tab-callbacks",
+    "name": "route callback",
+    "property": "callbackData",
+    "propertyType": "msg",
+    "rules": [
+      {
+        "t": "eq",
+        "v": "menu_home",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "menu_help",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "menu_list",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "menu_add",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "menu_upcoming",
+        "vt": "str"
+      },
+      {
+        "t": "regex",
+        "v": "^del_ask:",
+        "vt": "str"
+      },
+      {
+        "t": "regex",
+        "v": "^del_yes:",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "add_confirm",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "add_cancel",
+        "vt": "str"
+      },
+      {
+        "t": "regex",
+        "v": "^interests:",
+        "vt": "str"
+      },
+      {
+        "t": "regex",
+        "v": "^gift:",
+        "vt": "str"
+      },
+      {
+        "t": "regex",
+        "v": "^gift_save:",
+        "vt": "str"
+      },
+      {
+        "t": "regex",
+        "v": "^gift_buy:",
+        "vt": "str"
+      },
+      {
+        "t": "regex",
+        "v": "^gift_del:",
+        "vt": "str"
+      },
+      {
+        "t": "regex",
+        "v": "^saved:",
+        "vt": "str"
+      },
+      {
+        "t": "regex",
+        "v": "^contact:",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "noop",
+        "vt": "str"
+      },
+      {
+        "t": "else"
+      }
+    ],
+    "outputs": 18,
+    "x": 560,
+    "y": 160,
+    "wires": [
+      [
+        "cb-home"
+      ],
+      [
+        "cb-help"
+      ],
+      [
+        "cb-list-query"
+      ],
+      [
+        "cb-add-start"
+      ],
+      [
+        "cb-upcoming-query"
+      ],
+      [
+        "cb-del-ask"
+      ],
+      [
+        "cb-del-yes"
+      ],
+      [
+        "cb-add-confirm"
+      ],
+      [
+        "cb-add-cancel"
+      ],
+      [
+        "cb-interests-start"
+      ],
+      [
+        "cb-gift-gen"
+      ],
+      [
+        "cb-gift-save"
+      ],
+      [
+        "cb-gift-buy"
+      ],
+      [
+        "cb-gift-del"
+      ],
+      [
+        "cb-saved-list"
+      ],
+      [
+        "cb-contact-detail"
+      ],
+      [],
+      [
+        "cb-unknown"
+      ]
+    ]
+  },
+  {
+    "id": "cb-home",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "home menu",
+    "func": "function buildReply(o){\n  const b = { chat_id: o.chatId, parse_mode: \"HTML\" };\n  if (o.useEdit && o.messageId) b.message_id = o.messageId;\n  if (o.useEdit && o.photo) return { method: \"editMessageMedia\", body: Object.assign(b, { media: { type:\"photo\", media: o.photo, caption: o.text, parse_mode: \"HTML\" }, reply_markup: { inline_keyboard: o.keyboard } }) };\n  if (o.useEdit) return { method: \"editMessageText\", body: Object.assign(b, { text: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n  if (o.photo) return { method: \"sendPhoto\", body: Object.assign(b, { photo: o.photo, caption: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n  return { method: \"sendMessage\", body: Object.assign(b, { text: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n}\nconst reply = buildReply({\n    chatId: msg.chatId,\n    messageId: msg.messageId,\n    useEdit: true,\n    text: 'Головне меню:',\n    photo: env.get('MENU_PHOTO_URL'),\n    keyboard: global.get('MENU_KB')\n});\nmsg.tgMethod = reply.method;\nmsg.tgBody = reply.body;\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 320,
+    "wires": [
+      [
+        "cb-send-nav"
+      ]
+    ]
+  },
+  {
+    "id": "cb-help",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "help (edit)",
+    "func": "function buildReply(o){\n  const b = { chat_id: o.chatId, parse_mode: \"HTML\" };\n  if (o.useEdit && o.messageId) b.message_id = o.messageId;\n  if (o.useEdit && o.photo) return { method: \"editMessageMedia\", body: Object.assign(b, { media: { type:\"photo\", media: o.photo, caption: o.text, parse_mode: \"HTML\" }, reply_markup: { inline_keyboard: o.keyboard } }) };\n  if (o.useEdit) return { method: \"editMessageText\", body: Object.assign(b, { text: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n  if (o.photo) return { method: \"sendPhoto\", body: Object.assign(b, { photo: o.photo, caption: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n  return { method: \"sendMessage\", body: Object.assign(b, { text: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n}\nconst reply = buildReply({\n    chatId: msg.chatId,\n    messageId: msg.messageId,\n    useEdit: true,\n    photo: env.get('MENU_PHOTO_HELP'),\n    text: global.get('HELP_TEXT'),\n    keyboard: global.get('BACK_KB')\n});\nmsg.tgMethod = reply.method;\nmsg.tgBody = reply.body;\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 480,
+    "wires": [
+      [
+        "cb-send-nav"
+      ]
+    ]
+  },
+  {
+    "id": "cb-list-query",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "list query",
+    "func": "msg.query = `SELECT id, name, TO_CHAR(birthday, 'DD.MM.YYYY') AS birthday_fmt,\n(MAKE_DATE(EXTRACT(YEAR FROM CURRENT_DATE)::INT, EXTRACT(MONTH FROM birthday)::INT, EXTRACT(DAY FROM birthday)::INT) - CURRENT_DATE) AS days_until\nFROM contacts WHERE owner_id = $1\nORDER BY EXTRACT(MONTH FROM birthday), EXTRACT(DAY FROM birthday)`;\nmsg.params = [msg.from.id];\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 640,
+    "wires": [
+      [
+        "render-list-pg"
+      ]
+    ]
+  },
+  {
+    "id": "cb-add-start",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "start add flow",
+    "func": "msg.query = `UPDATE user_sessions SET state='awaiting_name', context='{}'::jsonb WHERE telegram_id=$1`;\nmsg.params = [msg.from.id];\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 1040,
+    "wires": [
+      [
+        "render-add-name-pg"
+      ]
+    ]
+  },
+  {
+    "id": "cb-upcoming-query",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "upcoming query",
+    "func": "msg.query = `SELECT name, TO_CHAR(birthday, 'DD.MM.YYYY') AS bd,\n(MAKE_DATE(EXTRACT(YEAR FROM CURRENT_DATE)::INT, EXTRACT(MONTH FROM birthday)::INT, EXTRACT(DAY FROM birthday)::INT) - CURRENT_DATE) AS days\nFROM contacts WHERE owner_id=$1 AND\n(MAKE_DATE(EXTRACT(YEAR FROM CURRENT_DATE)::INT, EXTRACT(MONTH FROM birthday)::INT, EXTRACT(DAY FROM birthday)::INT) - CURRENT_DATE) BETWEEN 0 AND 30\nORDER BY days LIMIT 10`;\nmsg.params = [msg.from.id];\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 880,
+    "wires": [
+      [
+        "render-upcoming-pg"
+      ]
+    ]
+  },
+  {
+    "id": "cb-del-ask",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "ask delete",
+    "func": "const id = msg.callbackData.split(':')[1];\nmsg.query = `SELECT id, name, TO_CHAR(birthday,'DD.MM.YYYY') AS bd FROM contacts WHERE id=$1 AND owner_id=$2`;\nmsg.params = [id, msg.from.id];\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 1600,
+    "wires": [
+      [
+        "cb-del-ask-pg"
+      ]
+    ]
+  },
+  {
+    "id": "cb-del-ask-pg",
+    "type": "postgresql",
+    "z": "tab-callbacks",
+    "name": "SELECT",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1000,
+    "y": 1600,
+    "wires": [
+      [
+        "cb-del-ask-reply"
+      ]
+    ]
+  },
+  {
+    "id": "cb-del-ask-reply",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "confirm UI",
+    "func": "function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\nconst row = msg.payload && msg.payload[0];\nif (!row) {\n    msg.tgMethod='editMessageText';\n    msg.tgBody={chat_id:msg.chatId,message_id:msg.messageId,text:'Контакт не знайдено.',reply_markup:{inline_keyboard:[[{text:'🏠 Меню',callback_data:'menu_home'}]]}};\n    return msg;\n}\nmsg.tgMethod = 'editMessageText';\nmsg.tgBody = {\n    chat_id: msg.chatId,\n    message_id: msg.messageId,\n    text: `Видалити контакт?\\n\\n👤 <b>${esc(row.name)}</b>\\n🎂 ${row.bd}`,\n    parse_mode: 'HTML',\n    reply_markup: {\n        inline_keyboard: [[\n            { text: '🗑 Так, видалити', callback_data: 'del_yes:'+row.id },\n            { text: '↩️ Скасувати',    callback_data: 'menu_list' }\n        ]]\n    }\n};\nreturn msg;",
+    "outputs": 1,
+    "x": 1220,
+    "y": 1600,
+    "wires": [
+      [
+        "cb-send-contact"
+      ]
+    ]
+  },
+  {
+    "id": "cb-del-yes",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "delete (auth check)",
+    "func": "const id = msg.callbackData.split(':')[1];\nmsg.query = `DELETE FROM contacts WHERE id=$1 AND owner_id=$2 RETURNING name`;\nmsg.params = [id, msg.from.id];\nmsg.auditAction = 'contact_deleted';\nmsg.auditEntityType = 'contact';\nmsg.auditEntityId = Number(id);\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 1760,
+    "wires": [
+      [
+        "cb-del-yes-pg"
+      ]
+    ]
+  },
+  {
+    "id": "cb-del-yes-pg",
+    "type": "postgresql",
+    "z": "tab-callbacks",
+    "name": "DELETE",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1000,
+    "y": 1760,
+    "wires": [
+      [
+        "cb-del-yes-reply"
+      ]
+    ]
+  },
+  {
+    "id": "cb-del-yes-reply",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "show result",
+    "func": "function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\nconst row = msg.payload && msg.payload[0];\nmsg.tgMethod = 'editMessageText';\nmsg.tgBody = {\n    chat_id: msg.chatId,\n    message_id: msg.messageId,\n    text: row ? `✅ Видалено: <b>${esc(row.name)}</b>` : '⚠️ Контакт не знайдено.',\n    parse_mode: 'HTML',\n    reply_markup: { inline_keyboard: [[{ text:'📋 До списку', callback_data:'menu_list' },{ text:'🏠 Меню', callback_data:'menu_home' }]] }\n};\nreturn [msg, row ? msg : null];",
+    "outputs": 2,
+    "x": 1220,
+    "y": 1760,
+    "wires": [
+      [
+        "cb-send-contact"
+      ],
+      [
+        "cb-audit-contact"
+      ]
+    ]
+  },
+  {
+    "id": "cb-add-confirm",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "confirm add — INSERT",
+    "func": "const ctx = msg.session.context;\nif (!ctx || !ctx.name || !ctx.date) {\n    msg.tgMethod='editMessageText';\n    msg.tgBody={chat_id:msg.chatId,message_id:msg.messageId,text:'Щось пішло не так, спробуй ще.',reply_markup:{inline_keyboard:[[{text:'🏠 Меню',callback_data:'menu_home'}]]}};\n    return [msg, null];\n}\nmsg._addCtx = ctx;\nconst interests = ctx.interests || null;\n// ON CONFLICT: якщо контакт вже є — UPDATE замість dup-error\nmsg.query = `INSERT INTO contacts (owner_id, name, birthday, interests) VALUES ($1,$2,$3,$4)\n    ON CONFLICT (owner_id, LOWER(name)) DO UPDATE SET birthday=EXCLUDED.birthday, interests=COALESCE(EXCLUDED.interests, contacts.interests), updated_at=NOW()\n    RETURNING id, name, TO_CHAR(birthday,'DD.MM.YYYY') AS bd, interests, (xmax = 0) AS was_inserted`;\nmsg.params = [msg.from.id, ctx.name, ctx.date, interests];\nreturn [null, msg];",
+    "outputs": 2,
+    "x": 780,
+    "y": 1120,
+    "wires": [
+      [
+        "cb-send-add"
+      ],
+      [
+        "cb-add-confirm-pg"
+      ]
+    ]
+  },
+  {
+    "id": "cb-add-confirm-pg",
+    "type": "postgresql",
+    "z": "tab-callbacks",
+    "name": "INSERT contact",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1000,
+    "y": 1120,
+    "wires": [
+      [
+        "cb-add-confirm-reset"
+      ]
+    ]
+  },
+  {
+    "id": "cb-add-confirm-reset",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "reset session",
+    "func": "msg._saved = msg.payload && msg.payload[0];\nmsg.query = `UPDATE user_sessions SET state='idle', context=NULL WHERE telegram_id=$1`;\nmsg.params = [msg.from.id];\nreturn msg;",
+    "outputs": 1,
+    "x": 1220,
+    "y": 1120,
+    "wires": [
+      [
+        "cb-add-confirm-reset-pg"
+      ]
+    ]
+  },
+  {
+    "id": "cb-add-confirm-reset-pg",
+    "type": "postgresql",
+    "z": "tab-callbacks",
+    "name": "UPDATE session",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1440,
+    "y": 1120,
+    "wires": [
+      [
+        "cb-add-confirm-reply"
+      ]
+    ]
+  },
+  {
+    "id": "cb-add-confirm-reply",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "success msg",
+    "func": "function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\nconst r = msg._saved;\nmsg.tgMethod='editMessageText';\nif (!r) {\n    msg.tgBody={chat_id:msg.chatId,message_id:msg.messageId,text:'⚠️ Не вдалось зберегти.',reply_markup:{inline_keyboard:[[{text:'🏠 Меню',callback_data:'menu_home'}]]}};\n    return [msg, null];\n}\nconst isNew = r.was_inserted !== false;\nconst verb = isNew ? '✅ Збережено' : '🔄 Оновлено';\nmsg.tgBody={\n    chat_id: msg.chatId, message_id: msg.messageId,\n    text: `${verb}: <b>${esc(r.name)}</b> • ${r.bd}\\n\\n💡 <i>Розкажи про інтереси — AI підкаже ідеї подарунків.</i>`,\n    parse_mode:'HTML',\n    reply_markup: { inline_keyboard: [\n        [{ text:'💡 Додати/змінити інтереси',  callback_data:'interests:'+r.id }],\n        [{ text:'🎁 Ідеї подарунків',  callback_data:'gift:'+r.id }],\n        [{ text:'➕ Ще один', callback_data:'menu_add' }, { text:'🏠 Меню', callback_data:'menu_home' }]\n    ]}\n};\nmsg.auditAction = isNew ? 'contact_added' : 'contact_updated';\nmsg.auditEntityType = 'contact';\nmsg.auditEntityId = r.id;\nmsg.auditPayload = { name: r.name, bd: r.bd };\nreturn [msg, msg];",
+    "outputs": 2,
+    "x": 1660,
+    "y": 1120,
+    "wires": [
+      [
+        "cb-send-add"
+      ],
+      [
+        "cb-audit-add"
+      ]
+    ]
+  },
+  {
+    "id": "cb-add-cancel",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "cancel add",
+    "func": "msg.query = `UPDATE user_sessions SET state='idle', context=NULL WHERE telegram_id=$1`;\nmsg.params = [msg.from.id];\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 1280,
+    "wires": [
+      [
+        "cb-add-cancel-pg"
+      ]
+    ]
+  },
+  {
+    "id": "cb-add-cancel-pg",
+    "type": "postgresql",
+    "z": "tab-callbacks",
+    "name": "UPDATE session",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1000,
+    "y": 1280,
+    "wires": [
+      [
+        "cb-add-cancel-reply"
+      ]
+    ]
+  },
+  {
+    "id": "cb-add-cancel-reply",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "reply — back to menu",
+    "func": "function buildReply(o){\n  const b = { chat_id: o.chatId, parse_mode: \"HTML\" };\n  if (o.useEdit && o.messageId) b.message_id = o.messageId;\n  if (o.useEdit && o.photo) return { method: \"editMessageMedia\", body: Object.assign(b, { media: { type:\"photo\", media: o.photo, caption: o.text, parse_mode: \"HTML\" }, reply_markup: { inline_keyboard: o.keyboard } }) };\n  if (o.useEdit) return { method: \"editMessageText\", body: Object.assign(b, { text: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n  if (o.photo) return { method: \"sendPhoto\", body: Object.assign(b, { photo: o.photo, caption: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n  return { method: \"sendMessage\", body: Object.assign(b, { text: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n}\nconst reply = buildReply({\n    chatId: msg.chatId,\n    messageId: msg.messageId,\n    useEdit: true,\n    photo: env.get('MENU_PHOTO_URL'),\n    text: 'Дію скасовано. Що зробимо далі?',\n    keyboard: global.get('MENU_KB')\n});\nmsg.tgMethod = reply.method;\nmsg.tgBody = reply.body;\nreturn msg;",
+    "outputs": 1,
+    "x": 1220,
+    "y": 1280,
+    "wires": [
+      [
+        "cb-send-add"
+      ]
+    ]
+  },
+  {
+    "id": "cb-interests-start",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "start interests FSM",
+    "func": "const cid = msg.callbackData.split(':')[1];\nmsg.query = `UPDATE user_sessions SET state='awaiting_interests', context=jsonb_build_object('contact_id', $1::bigint) WHERE telegram_id=$2`;\nmsg.params = [Number(cid), msg.from.id];\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 1440,
+    "wires": [
+      [
+        "cb-interests-pg"
+      ]
+    ]
+  },
+  {
+    "id": "cb-interests-pg",
+    "type": "postgresql",
+    "z": "tab-callbacks",
+    "name": "UPDATE state",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1000,
+    "y": 1440,
+    "wires": [
+      [
+        "cb-interests-reply"
+      ]
+    ]
+  },
+  {
+    "id": "cb-interests-reply",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "ask interests",
+    "func": "msg.tgMethod='editMessageText';\nmsg.tgBody={\n    chat_id: msg.chatId, message_id: msg.messageId,\n    text: '💡 Що ця людина любить? Розкажи коротко.\\n\\n<i>Приклади:</i>\\n• «любить книги, каву, йога»\\n• «фанат футболу, їздить на велосипеді»\\n• «дизайнер, цінує мінімалізм»',\n    parse_mode:'HTML',\n    reply_markup:{ inline_keyboard:[[{text:'⏭ Пропустити',callback_data:'add_cancel'}]] }\n};\nreturn msg;",
+    "outputs": 1,
+    "x": 1220,
+    "y": 1440,
+    "wires": [
+      [
+        "cb-send-add"
+      ]
+    ]
+  },
+  {
+    "id": "cb-gift-gen",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "gift generate — fetch contact",
+    "func": "const cid = msg.callbackData.split(':')[1];\nmsg.query = `SELECT id, name, birthday, interests, relationship, DATE_PART('year', AGE(birthday))::INT AS age FROM contacts WHERE id=$1 AND owner_id=$2`;\nmsg.params = [cid, msg.from.id];\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 1920,
+    "wires": [
+      [
+        "cb-gift-pg"
+      ]
+    ]
+  },
+  {
+    "id": "cb-gift-pg",
+    "type": "postgresql",
+    "z": "tab-callbacks",
+    "name": "SELECT contact",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1000,
+    "y": 1920,
+    "wires": [
+      [
+        "cb-gift-to-ai"
+      ]
+    ]
+  },
+  {
+    "id": "cb-gift-to-ai",
+    "type": "link out",
+    "z": "tab-callbacks",
+    "name": "→ AI gift gen",
+    "mode": "link",
+    "links": [
+      "ai-gift-in"
+    ],
+    "x": 1220,
+    "y": 1920,
+    "wires": []
+  },
+  {
+    "id": "cb-gift-save",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "save gift idea",
+    "func": "const id = msg.callbackData.split(':')[1];\nmsg.query = `UPDATE gift_ideas SET status='saved' WHERE id=$1 AND owner_id=$2 RETURNING title, contact_id`;\nmsg.params = [id, msg.from.id];\nmsg.auditAction='gift_saved';\nmsg.auditEntityType='gift_idea';\nmsg.auditEntityId=Number(id);\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 2000,
+    "wires": [
+      [
+        "cb-gift-save-pg"
+      ]
+    ]
+  },
+  {
+    "id": "cb-gift-save-pg",
+    "type": "postgresql",
+    "z": "tab-callbacks",
+    "name": "UPDATE",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1000,
+    "y": 2000,
+    "wires": [
+      [
+        "cb-gift-save-reply"
+      ]
+    ]
+  },
+  {
+    "id": "cb-gift-save-reply",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "confirm saved",
+    "func": "function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\nconst r = msg.payload && msg.payload[0];\nmsg.tgMethod='editMessageText';\nif (!r) {\n    msg.tgBody={chat_id:msg.chatId,message_id:msg.messageId,text:'⚠️ Не знайдено.',reply_markup:{inline_keyboard:[[{text:'🏠 Меню',callback_data:'menu_home'}]]}};\n    return [msg, null];\n}\nmsg.tgBody={\n    chat_id: msg.chatId, message_id: msg.messageId,\n    text: `⭐ Збережено: <b>${esc(r.title)}</b>\\n\\n<i>Переглянь усі збережені ідеї та познач куплене.</i>`,\n    parse_mode:'HTML',\n    reply_markup: { inline_keyboard: [\n        [{text:'📝 Мої збережені ідеї', callback_data:'saved:'+r.contact_id}],\n        [{text:'🔄 Ще ідеї', callback_data:'gift:'+r.contact_id}, {text:'🏠 Меню', callback_data:'menu_home'}]\n    ]}\n};\nreturn [msg, msg];",
+    "outputs": 2,
+    "x": 1220,
+    "y": 2000,
+    "wires": [
+      [
+        "cb-send-gift"
+      ],
+      [
+        "cb-audit-gift"
+      ]
+    ]
+  },
+  {
+    "id": "cb-gift-buy",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "mark bought",
+    "func": "const id = msg.callbackData.split(':')[1];\nmsg.query = `UPDATE gift_ideas SET status='bought' WHERE id=$1 AND owner_id=$2 RETURNING title, contact_id`;\nmsg.params = [id, msg.from.id];\nmsg.auditAction='gift_bought';\nmsg.auditEntityType='gift_idea';\nmsg.auditEntityId=Number(id);\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 2240,
+    "wires": [
+      [
+        "cb-gift-buy-pg"
+      ]
+    ]
+  },
+  {
+    "id": "cb-gift-buy-pg",
+    "type": "postgresql",
+    "z": "tab-callbacks",
+    "name": "UPDATE",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1000,
+    "y": 2240,
+    "wires": [
+      [
+        "cb-gift-buy-reply"
+      ]
+    ]
+  },
+  {
+    "id": "cb-gift-buy-reply",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "confirm bought",
+    "func": "function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\nconst r = msg.payload && msg.payload[0];\nmsg.tgMethod='editMessageText';\nmsg.tgBody={\n    chat_id: msg.chatId, message_id: msg.messageId,\n    text: r ? `✅ Позначено як куплене: <b>${esc(r.title)}</b> 🎉\\n\\n<i>Удачі з привітанням!</i>` : '⚠️ Не знайдено.',\n    parse_mode:'HTML',\n    reply_markup: { inline_keyboard: [\n        r ? [{text:'📝 Мої ідеї', callback_data:'saved:'+r.contact_id}, {text:'🏠 Меню', callback_data:'menu_home'}] : [{text:'🏠 Меню', callback_data:'menu_home'}]\n    ]}\n};\nreturn [msg, msg];",
+    "outputs": 2,
+    "x": 1220,
+    "y": 2240,
+    "wires": [
+      [
+        "cb-send-gift"
+      ],
+      [
+        "cb-audit-gift"
+      ]
+    ]
+  },
+  {
+    "id": "cb-saved-list",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "saved ideas list",
+    "func": "const cid = msg.callbackData.split(':')[1];\nmsg._cid = cid;\nmsg.query = `SELECT g.id, g.title, g.price_range, g.status, c.name AS contact_name FROM gift_ideas g JOIN contacts c ON c.id=g.contact_id WHERE g.contact_id=$1 AND g.owner_id=$2 AND g.status IN ('saved','bought') ORDER BY g.status, g.generated_at DESC`;\nmsg.params = [cid, msg.from.id];\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 2080,
+    "wires": [
+      [
+        "cb-saved-list-pg"
+      ]
+    ]
+  },
+  {
+    "id": "cb-saved-list-pg",
+    "type": "postgresql",
+    "z": "tab-callbacks",
+    "name": "SELECT",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1000,
+    "y": 2080,
+    "wires": [
+      [
+        "cb-saved-list-reply"
+      ]
+    ]
+  },
+  {
+    "id": "cb-saved-list-reply",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "format saved",
+    "func": "function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\nconst rows = msg.payload || [];\nconst cid = msg._cid;\nconst name = rows[0] ? rows[0].contact_name : '';\nmsg.tgMethod='editMessageText';\nif (rows.length === 0) {\n    msg.tgBody={chat_id:msg.chatId,message_id:msg.messageId,text:'📝 Ще немає збережених ідей.',reply_markup:{inline_keyboard:[[{text:'🎁 Згенерувати',callback_data:'gift:'+cid},{text:'🏠 Меню',callback_data:'menu_home'}]]}};\n    return msg;\n}\nconst lines = [`📝 <b>Ідеї для ${esc(name)}:</b>`, ''];\nconst kb = [];\nrows.forEach(r => {\n    const badge = r.status === 'bought' ? '✅' : '⭐';\n    lines.push(`${badge} <b>${esc(r.title)}</b>${r.price_range ? ' • '+esc(r.price_range) : ''}`);\n    if (r.status === 'saved') {\n        kb.push([\n            { text: '✅ Куплено: '+r.title.slice(0,20), callback_data: 'gift_buy:'+r.id },\n            { text: '🗑', callback_data: 'gift_del:'+r.id }\n        ]);\n    }\n});\nkb.push([{text:'🎁 Ще ідеї', callback_data:'gift:'+cid}, {text:'🏠 Меню', callback_data:'menu_home'}]);\nmsg.tgBody={chat_id:msg.chatId, message_id:msg.messageId, text:lines.join('\\n'), parse_mode:'HTML', reply_markup:{inline_keyboard:kb}};\nreturn msg;",
+    "outputs": 1,
+    "x": 1220,
+    "y": 2080,
+    "wires": [
+      [
+        "cb-send-gift"
+      ]
+    ]
+  },
+  {
+    "id": "cb-gift-del",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "delete gift idea",
+    "func": "const id = msg.callbackData.split(':')[1];\nmsg.query = `DELETE FROM gift_ideas WHERE id=$1 AND owner_id=$2 RETURNING contact_id`;\nmsg.params = [id, msg.from.id];\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 2400,
+    "wires": [
+      [
+        "cb-gift-del-pg"
+      ]
+    ]
+  },
+  {
+    "id": "cb-gift-del-pg",
+    "type": "postgresql",
+    "z": "tab-callbacks",
+    "name": "DELETE",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1000,
+    "y": 2400,
+    "wires": [
+      [
+        "cb-gift-del-back"
+      ]
+    ]
+  },
+  {
+    "id": "cb-gift-del-back",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "back to saved list",
+    "func": "const r = msg.payload && msg.payload[0];\nif (!r) {\n    msg.tgMethod='editMessageText';\n    msg.tgBody={chat_id:msg.chatId,message_id:msg.messageId,text:'⚠️ Не знайдено.',reply_markup:{inline_keyboard:[[{text:'🏠 Меню',callback_data:'menu_home'}]]}};\n    return msg;\n}\n// Перенаправляємо на saved list для цього контакту\nmsg.callbackData = 'saved:' + r.contact_id;\nreturn msg;",
+    "outputs": 1,
+    "x": 1220,
+    "y": 2400,
+    "wires": [
+      [
+        "cb-saved-list"
+      ]
+    ]
+  },
+  {
+    "id": "cb-contact-detail",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "contact detail",
+    "func": "const cid = msg.callbackData.split(':')[1];\nmsg.query = `SELECT c.id, c.name, TO_CHAR(c.birthday,'DD.MM.YYYY') AS bd, c.interests, c.relationship, (MAKE_DATE(EXTRACT(YEAR FROM CURRENT_DATE)::INT, EXTRACT(MONTH FROM c.birthday)::INT, EXTRACT(DAY FROM c.birthday)::INT) - CURRENT_DATE) AS days_until, (SELECT COUNT(*)::INT FROM gift_ideas g WHERE g.contact_id=c.id AND g.status='saved') AS saved_gifts FROM contacts c WHERE c.id=$1 AND c.owner_id=$2`;\nmsg.params = [cid, msg.from.id];\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 1520,
+    "wires": [
+      [
+        "cb-contact-detail-pg"
+      ]
+    ]
+  },
+  {
+    "id": "cb-contact-detail-pg",
+    "type": "postgresql",
+    "z": "tab-callbacks",
+    "name": "SELECT",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1000,
+    "y": 1520,
+    "wires": [
+      [
+        "cb-contact-detail-reply"
+      ]
+    ]
+  },
+  {
+    "id": "cb-contact-detail-reply",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "show detail",
+    "func": "function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\nconst r = msg.payload && msg.payload[0];\nif (!r) {\n    msg.tgMethod='editMessageText';\n    msg.tgBody={chat_id:msg.chatId,message_id:msg.messageId,text:'⚠️ Контакт не знайдено.',reply_markup:{inline_keyboard:[[{text:'🏠 Меню',callback_data:'menu_home'}]]}};\n    return msg;\n}\nconst d = parseInt(r.days_until);\nconst when = d === 0 ? '🎉 <b>сьогодні!</b>' : d === 1 ? 'завтра' : d > 0 ? `через ${d} дн.` : `${-d} дн. тому`;\nconst interests = r.interests ? `\\n💡 <i>${esc(r.interests)}</i>` : '\\n<i>Інтереси ще не додані</i>';\nconst gifts = r.saved_gifts > 0 ? `\\n⭐ Збережено ідей: ${r.saved_gifts}` : '';\n\nmsg.tgMethod='editMessageText';\nmsg.tgBody={\n    chat_id: msg.chatId, message_id: msg.messageId,\n    text: `👤 <b>${esc(r.name)}</b>\\n🎂 ${r.bd} (${when})${interests}${gifts}`,\n    parse_mode:'HTML',\n    reply_markup: { inline_keyboard: [\n        [{text:'🎁 Генерувати ідеї', callback_data:'gift:'+r.id}, {text:'📝 Мої ідеї ('+r.saved_gifts+')', callback_data:'saved:'+r.id}],\n        [{text:'💡 '+(r.interests?'Змінити':'Додати')+' інтереси', callback_data:'interests:'+r.id}],\n        [{text:'🗑 Видалити', callback_data:'del_ask:'+r.id}, {text:'📋 Список', callback_data:'menu_list'}],\n        [{text:'🏠 Меню', callback_data:'menu_home'}]\n    ]}\n};\nreturn msg;",
+    "outputs": 1,
+    "x": 1220,
+    "y": 1520,
+    "wires": [
+      [
+        "cb-send-contact"
+      ]
+    ]
+  },
+  {
+    "id": "cb-unknown",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "unknown cb",
+    "func": "node.warn('Unknown callback_data: ' + msg.callbackData);\nreturn null;",
+    "outputs": 1,
+    "x": 780,
+    "y": 2480,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "c-render-title",
+    "type": "comment",
+    "z": "tab-callbacks",
+    "name": "SHARED RENDERERS - reused by menu and callbacks",
+    "info": "msg._useEdit = true → editMessageText\nmsg._useEdit = false → sendMessage",
+    "x": 1000,
+    "y": 240,
+    "wires": []
+  },
+  {
+    "id": "render-list-pg",
+    "type": "postgresql",
+    "z": "tab-callbacks",
+    "name": "SELECT contacts",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1000,
+    "y": 640,
+    "wires": [
+      [
+        "render-list-format"
+      ]
+    ]
+  },
+  {
+    "id": "render-list-format",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "format list (send|edit)",
+    "func": "function buildReply(o){\n  const b = { chat_id: o.chatId, parse_mode: \"HTML\" };\n  if (o.useEdit && o.messageId) b.message_id = o.messageId;\n  if (o.useEdit && o.photo) return { method: \"editMessageMedia\", body: Object.assign(b, { media: { type:\"photo\", media: o.photo, caption: o.text, parse_mode: \"HTML\" }, reply_markup: { inline_keyboard: o.keyboard } }) };\n  if (o.useEdit) return { method: \"editMessageText\", body: Object.assign(b, { text: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n  if (o.photo) return { method: \"sendPhoto\", body: Object.assign(b, { photo: o.photo, caption: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n  return { method: \"sendMessage\", body: Object.assign(b, { text: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n}\nconst contacts = msg.payload || [];\nlet text, keyboard;\n\nif (contacts.length === 0) {\n    text = '📋 У тебе ще немає контактів.';\n    keyboard = [ [{text:'➕ Додати', callback_data:'menu_add'}], ...global.get('BACK_KB') ];\n} else {\n    const rows = contacts.map(c => {\n        const d = parseInt(c.days_until);\n        const note = d === 0 ? '🎉' : d === 1 ? 'завтра' : d > 0 ? `${d}д` : `-${-d}д`;\n        return [{ text: `👤 ${c.name} • ${c.birthday_fmt.slice(0,5)} (${note})`, callback_data: 'contact:'+c.id }];\n    });\n    rows.push([{text:'➕ Додати', callback_data:'menu_add'}, {text:'🏠 Меню', callback_data:'menu_home'}]);\n    text = `<b>📋 Твої контакти (${contacts.length}):</b>\\n\\n<i>Клікни для деталей і ідей подарунків 💡</i>`;\n    keyboard = rows;\n}\n\nconst reply = buildReply({\n    chatId: msg.chatId,\n    messageId: msg.messageId,\n    useEdit: !!msg._useEdit,\n    photo: env.get('MENU_PHOTO_LIST'),\n    text, keyboard\n});\nmsg.tgMethod = reply.method;\nmsg.tgBody = reply.body;\nreturn msg;",
+    "outputs": 1,
+    "x": 1220,
+    "y": 640,
+    "wires": [
+      [
+        "cb-send-render"
+      ]
+    ]
+  },
+  {
+    "id": "render-upcoming-pg",
+    "type": "postgresql",
+    "z": "tab-callbacks",
+    "name": "SELECT upcoming",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1000,
+    "y": 880,
+    "wires": [
+      [
+        "render-upcoming-format"
+      ]
+    ]
+  },
+  {
+    "id": "render-upcoming-format",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "format upcoming",
+    "func": "function buildReply(o){\n  const b = { chat_id: o.chatId, parse_mode: \"HTML\" };\n  if (o.useEdit && o.messageId) b.message_id = o.messageId;\n  if (o.useEdit && o.photo) return { method: \"editMessageMedia\", body: Object.assign(b, { media: { type:\"photo\", media: o.photo, caption: o.text, parse_mode: \"HTML\" }, reply_markup: { inline_keyboard: o.keyboard } }) };\n  if (o.useEdit) return { method: \"editMessageText\", body: Object.assign(b, { text: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n  if (o.photo) return { method: \"sendPhoto\", body: Object.assign(b, { photo: o.photo, caption: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n  return { method: \"sendMessage\", body: Object.assign(b, { text: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n}\nfunction esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\nconst rows = msg.payload || [];\n\nlet text;\nif (rows.length === 0) {\n    text = '⏰ Найближчих 30 днів ніхто не святкує ДН.';\n} else {\n    const lines = ['<b>⏰ Найближчі 30 днів:</b>', ''];\n    rows.forEach(r => {\n        const d = parseInt(r.days);\n        const when = d === 0 ? '🎉 сьогодні!' : d === 1 ? 'завтра' : `через ${d} дн.`;\n        lines.push(`🎂 <b>${esc(r.name)}</b> — ${r.bd} (${when})`);\n    });\n    text = lines.join('\\n');\n}\n\nconst reply = buildReply({\n    chatId: msg.chatId,\n    messageId: msg.messageId,\n    useEdit: !!msg._useEdit,\n    photo: env.get('MENU_PHOTO_UPCOMING'),\n    text,\n    keyboard: global.get('BACK_KB')\n});\nmsg.tgMethod = reply.method;\nmsg.tgBody = reply.body;\nreturn msg;",
+    "outputs": 1,
+    "x": 1220,
+    "y": 880,
+    "wires": [
+      [
+        "cb-send-render"
+      ]
+    ]
+  },
+  {
+    "id": "render-add-name-pg",
+    "type": "postgresql",
+    "z": "tab-callbacks",
+    "name": "UPDATE state",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1000,
+    "y": 1040,
+    "wires": [
+      [
+        "render-add-name-reply"
+      ]
+    ]
+  },
+  {
+    "id": "render-add-name-reply",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "ask name",
+    "func": "const useEdit = !!msg._useEdit;\nconst base = { chat_id: msg.chatId, parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '❌ Скасувати', callback_data: 'add_cancel' }]] } };\nif (useEdit) base.message_id = msg.messageId;\nmsg.tgMethod = useEdit ? 'editMessageText' : 'sendMessage';\nmsg.tgBody = Object.assign(base, { text: '👤 Введи <b>ім\\'я</b> контакту:' });\nreturn msg;",
+    "outputs": 1,
+    "x": 1220,
+    "y": 1040,
+    "wires": [
+      [
+        "cb-send-add"
+      ]
+    ]
+  },
+  {
+    "id": "render-cancel-pg",
+    "type": "postgresql",
+    "z": "tab-callbacks",
+    "name": "UPDATE idle",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1000,
+    "y": 1360,
+    "wires": [
+      [
+        "render-cancel-reply"
+      ]
+    ]
+  },
+  {
+    "id": "render-cancel-reply",
+    "type": "function",
+    "z": "tab-callbacks",
+    "name": "reply",
+    "func": "msg.tgMethod='sendMessage';\nmsg.tgBody={chat_id:msg.chatId,text:'Дію скасовано. Що зробимо далі?',reply_markup:{inline_keyboard:[[{text:'🏠 Меню',callback_data:'menu_home'}]]}};\nreturn msg;",
+    "outputs": 1,
+    "x": 1220,
+    "y": 1360,
+    "wires": [
+      [
+        "cb-send-add"
+      ]
+    ]
+  },
+  {
+    "id": "render-cancel-in",
+    "type": "link in",
+    "z": "tab-callbacks",
+    "name": "cancel renderer in",
+    "links": [
+      "cmd-to-render-cancel"
+    ],
+    "x": 780,
+    "y": 1360,
+    "wires": [
+      [
+        "render-cancel-pg"
+      ]
+    ]
+  },
+  {
+    "id": "render-list-in",
+    "type": "link in",
+    "z": "tab-callbacks",
+    "name": "render list in",
+    "links": [
+      "ai-to-render-list"
+    ],
+    "x": 780,
+    "y": 560,
+    "wires": [
+      [
+        "render-list-pg"
+      ]
+    ]
+  },
+  {
+    "id": "render-upcoming-in",
+    "type": "link in",
+    "z": "tab-callbacks",
+    "name": "render upcoming in",
+    "links": [
+      "ai-to-render-upcoming"
+    ],
+    "x": 780,
+    "y": 800,
+    "wires": [
+      [
+        "render-upcoming-pg"
+      ]
+    ]
+  },
+  {
+    "id": "render-add-name-in",
+    "type": "link in",
+    "z": "tab-callbacks",
+    "name": "render add-name in",
+    "links": [
+      "ai-to-render-add"
+    ],
+    "x": 780,
+    "y": 960,
+    "wires": [
+      [
+        "render-add-name-pg"
+      ]
+    ]
+  },
+  {
+    "id": "cb-send-nav",
+    "type": "link out",
+    "z": "tab-callbacks",
+    "name": "send nav",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 1440,
+    "y": 400,
+    "wires": []
+  },
+  {
+    "id": "cb-send-render",
+    "type": "link out",
+    "z": "tab-callbacks",
+    "name": "send rendered view",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 1440,
+    "y": 720,
+    "wires": []
+  },
+  {
+    "id": "cb-send-add",
+    "type": "link out",
+    "z": "tab-callbacks",
+    "name": "send add flow",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 1880,
+    "y": 1200,
+    "wires": []
+  },
+  {
+    "id": "cb-send-contact",
+    "type": "link out",
+    "z": "tab-callbacks",
+    "name": "send contact flow",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 1440,
+    "y": 1680,
+    "wires": []
+  },
+  {
+    "id": "cb-send-gift",
+    "type": "link out",
+    "z": "tab-callbacks",
+    "name": "send gift flow",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 1440,
+    "y": 2160,
+    "wires": []
+  },
+  {
+    "id": "cb-audit-add",
+    "type": "link out",
+    "z": "tab-callbacks",
+    "name": "audit add",
+    "mode": "link",
+    "links": [
+      "audit-in"
+    ],
+    "x": 1880,
+    "y": 1120,
+    "wires": []
+  },
+  {
+    "id": "cb-audit-contact",
+    "type": "link out",
+    "z": "tab-callbacks",
+    "name": "audit contact",
+    "mode": "link",
+    "links": [
+      "audit-in"
+    ],
+    "x": 1440,
+    "y": 1840,
+    "wires": []
+  },
+  {
+    "id": "cb-audit-gift",
+    "type": "link out",
+    "z": "tab-callbacks",
+    "name": "audit gift",
+    "mode": "link",
+    "links": [
+      "audit-in"
+    ],
+    "x": 1440,
+    "y": 2320,
+    "wires": []
+  },
+  {
+    "id": "c-fsm-title",
+    "type": "comment",
+    "z": "tab-fsm",
+    "name": "FSM DIALOGS - deterministic user states",
+    "info": "",
+    "x": 280,
+    "y": 80,
+    "wires": []
+  },
+  {
+    "id": "fsm-name-in",
+    "type": "link in",
+    "z": "tab-fsm",
+    "name": "awaiting_name",
+    "links": [
+      "text-to-fsm-name"
+    ],
+    "x": 120,
+    "y": 160,
+    "wires": [
+      [
+        "fsm-name-validate"
+      ]
+    ]
+  },
+  {
+    "id": "fsm-name-validate",
+    "type": "function",
+    "z": "tab-fsm",
+    "name": "validate name",
+    "func": "const name = (msg.text || '').trim();\nif (name.length < 1 || name.length > 100 || !/^[\\p{L}\\s\\-']+$/u.test(name)) {\n    msg.tgMethod = 'sendMessage';\n    msg.tgBody = { chat_id: msg.chatId, text: '❌ Ім\\'я має бути 1-100 символів (літери, пробіл, дефіс). Спробуй ще або /cancel.' };\n    return [null, msg];\n}\nmsg._name = name;\nmsg.query = `UPDATE user_sessions SET state='awaiting_birthday', context=jsonb_build_object('name', $1::text) WHERE telegram_id=$2`;\nmsg.params = [name, msg.from.id];\nreturn [msg, null];",
+    "outputs": 2,
+    "x": 340,
+    "y": 160,
+    "wires": [
+      [
+        "fsm-name-pg"
+      ],
+      [
+        "fsm-send-dialog"
+      ]
+    ]
+  },
+  {
+    "id": "fsm-name-pg",
+    "type": "postgresql",
+    "z": "tab-fsm",
+    "name": "UPDATE state",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 560,
+    "y": 160,
+    "wires": [
+      [
+        "fsm-name-reply"
+      ]
+    ]
+  },
+  {
+    "id": "fsm-name-reply",
+    "type": "function",
+    "z": "tab-fsm",
+    "name": "ask birthday",
+    "func": "function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\nmsg.tgMethod = 'sendMessage';\nmsg.tgBody = {\n    chat_id: msg.chatId,\n    text: `🎂 Коли у <b>${esc(msg._name)}</b> день народження?\\n\\n<i>Приклади:</i>\\n• 1995-03-15\\n• 15.03.1995\\n• 15 березня 1995`,\n    parse_mode: 'HTML',\n    reply_markup: { inline_keyboard: [[{ text:'❌ Скасувати', callback_data:'add_cancel' }]] }\n};\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 160,
+    "wires": [
+      [
+        "fsm-send-dialog"
+      ]
+    ]
+  },
+  {
+    "id": "fsm-birthday-in",
+    "type": "link in",
+    "z": "tab-fsm",
+    "name": "awaiting_birthday",
+    "links": [
+      "text-to-fsm-birthday"
+    ],
+    "x": 120,
+    "y": 400,
+    "wires": [
+      [
+        "ai-date-prepare"
+      ]
+    ]
+  },
+  {
+    "id": "ai-date-prepare",
+    "type": "function",
+    "z": "tab-fsm",
+    "name": "parse birthday date - build AI request",
+    "func": "const token = env.get('TOGETHER_API_KEY');\nconst model = env.get('AI_MODEL');\nif (!model) { node.error('AI_MODEL env var not set'); return null; }\nif (!token) { node.warn('TOGETHER_API_KEY missing, fallback regex'); msg._noAI = true; return msg; }\n\nconst today = new Date().toLocaleDateString('en-CA', {timeZone:'Europe/Kyiv'});\nmsg.url = 'https://api.together.xyz/v1/chat/completions';\nmsg.method = 'POST';\nmsg.headers = { 'Content-Type':'application/json', 'Authorization': `Bearer ${token}` };\nmsg.payload = {\n    model: model,\n    temperature: 0.1,\n    max_tokens: 150,\n    response_format: { type: 'json_object' },\n    messages: [\n        { role:'system', content: `Ти парсер дат з української мови. Сьогодні ${today}. Поверни ЧИСТИЙ JSON: {\"date\":\"YYYY-MM-DD\",\"confidence\":0.0-1.0}. Якщо не дата — confidence < 0.5. Дата має бути у минулому (до сьогодні).` },\n        { role:'user', content: msg.text }\n    ]\n};\nreturn msg;",
+    "outputs": 1,
+    "x": 340,
+    "y": 400,
+    "wires": [
+      [
+        "ai-date-http"
+      ]
+    ]
+  },
+  {
+    "id": "ai-date-http",
+    "type": "http request",
+    "z": "tab-fsm",
+    "name": "POST Together",
+    "method": "use",
+    "ret": "obj",
+    "url": "",
+    "persist": false,
+    "x": 560,
+    "y": 400,
+    "wires": [
+      [
+        "ai-date-parse"
+      ]
+    ]
+  },
+  {
+    "id": "ai-date-parse",
+    "type": "function",
+    "z": "tab-fsm",
+    "name": "Parse AI + regex fallback",
+    "func": "let date = null, confidence = 0;\n\n// Primary: AI response\ntry {\n    const content = msg.payload && msg.payload.choices && msg.payload.choices[0].message.content;\n    if (content) {\n        const parsed = JSON.parse(content);\n        if (parsed && parsed.date && /^\\d{4}-\\d{2}-\\d{2}$/.test(parsed.date)) {\n            date = parsed.date;\n            confidence = Number(parsed.confidence) || 0.8;\n        }\n    }\n} catch (e) { node.warn('AI parse fail: ' + e.message); }\n\n// Fallback: regex for common formats\nif (!date || confidence < 0.5) {\n    const t = msg.text || '';\n    let m;\n    if (m = t.match(/(\\d{4})-(\\d{2})-(\\d{2})/)) {\n        date = `${m[1]}-${m[2]}-${m[3]}`; confidence = 0.95;\n    } else if (m = t.match(/(\\d{1,2})[.\\/](\\d{1,2})[.\\/](\\d{4})/)) {\n        date = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; confidence = 0.9;\n    }\n}\n\n// Validate date\nif (date) {\n    const d = new Date(date);\n    const now = new Date();\n    if (isNaN(d) || d > now || d < new Date('1900-01-01')) {\n        date = null; confidence = 0;\n    }\n}\n\nmsg._aiDate = { date, confidence };\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 400,
+    "wires": [
+      [
+        "fsm-birthday-branch"
+      ]
+    ]
+  },
+  {
+    "id": "fsm-birthday-branch",
+    "type": "switch",
+    "z": "tab-fsm",
+    "name": "date valid?",
+    "property": "_aiDate.confidence",
+    "propertyType": "msg",
+    "rules": [
+      {
+        "t": "gte",
+        "v": 0.7,
+        "vt": "num"
+      },
+      {
+        "t": "else"
+      }
+    ],
+    "outputs": 2,
+    "x": 1000,
+    "y": 400,
+    "wires": [
+      [
+        "fsm-birthday-ok"
+      ],
+      [
+        "fsm-birthday-fail"
+      ]
+    ]
+  },
+  {
+    "id": "fsm-birthday-ok",
+    "type": "function",
+    "z": "tab-fsm",
+    "name": "save ctx + ask confirm",
+    "func": "const date = msg._aiDate.date;\nconst name = (msg.session.context && msg.session.context.name) || '?';\nmsg._confirmName = name;\nmsg._confirmDate = date;\nmsg.query = `UPDATE user_sessions SET state='confirming_add', context=jsonb_build_object('name',$1::text,'date',$2::text) WHERE telegram_id=$3`;\nmsg.params = [name, date, msg.from.id];\nreturn msg;",
+    "outputs": 1,
+    "x": 1220,
+    "y": 240,
+    "wires": [
+      [
+        "fsm-birthday-ok-pg"
+      ]
+    ]
+  },
+  {
+    "id": "fsm-birthday-ok-pg",
+    "type": "postgresql",
+    "z": "tab-fsm",
+    "name": "UPDATE state",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1440,
+    "y": 240,
+    "wires": [
+      [
+        "fsm-birthday-ok-reply"
+      ]
+    ]
+  },
+  {
+    "id": "fsm-birthday-ok-reply",
+    "type": "function",
+    "z": "tab-fsm",
+    "name": "confirm UI (edit if exists)",
+    "func": "function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\nfunction fmtBd(iso){const d=new Date(iso);const now=new Date();let age=now.getFullYear()-d.getFullYear();if(now.getMonth()<d.getMonth()||(now.getMonth()===d.getMonth()&&now.getDate()<d.getDate()))age--;return {human: iso.slice(8,10)+'.'+iso.slice(5,7)+'.'+iso.slice(0,4), age: age+1};}\n\nconst n = msg._confirmName, dIso = msg._confirmDate;\nconst interests = msg._confirmInterests;\nconst f = fmtBd(dIso);\n\nconst ctx = (msg.session && msg.session.context) || {};\nconst isEdit = !!ctx.confirm_msg_id;\nconst stamp = new Date().toLocaleTimeString('uk-UA', {timeZone:'Europe/Kyiv', hour:'2-digit', minute:'2-digit'});\n\nlet text = isEdit ? `✏️ <b>Оновлено ${stamp}</b>\\n\\n` : '';\ntext += `Додати контакт?\\n\\n👤 <b>${esc(n)}</b>\\n🎂 ${f.human} (буде ${f.age} років)`;\nif (interests) text += `\\n💡 <i>${esc(interests)}</i>`;\nif (!isEdit) text += '\\n\\n<i>Можеш виправити написавши «27 числа» або «не 2005, 2006»</i>';\n\nconst body = {\n    chat_id: msg.chatId,\n    text,\n    parse_mode: 'HTML',\n    reply_markup: { inline_keyboard: [[\n        { text:'✅ Зберегти', callback_data:'add_confirm' },\n        { text:'❌ Скасувати',  callback_data:'add_cancel' }\n    ]]}\n};\n\nif (isEdit) {\n    msg.tgMethod = 'editMessageText';\n    body.message_id = ctx.confirm_msg_id;\n    msg.tgBody = body;\n    return [msg, null];\n}\n\n// Перший раз — direct HTTP щоб впіймати message_id\nconst token = env.get('TELEGRAM_BOT_TOKEN');\nmsg.url = `${env.get('TELEGRAM_API_BASE')||'https://api.telegram.org'}/bot${token}/sendMessage`;\nmsg.method = 'POST';\nmsg.headers = { 'Content-Type': 'application/json' };\nmsg.payload = body;\nreturn [null, msg];",
+    "outputs": 2,
+    "x": 1660,
+    "y": 240,
+    "wires": [
+      [
+        "fsm-send-dialog"
+      ],
+      [
+        "confirm-direct-http"
+      ]
+    ]
+  },
+  {
+    "id": "confirm-direct-http",
+    "type": "http request",
+    "z": "tab-fsm",
+    "name": "POST sendMessage (capture id)",
+    "method": "use",
+    "ret": "obj",
+    "url": "",
+    "persist": false,
+    "x": 1660,
+    "y": 560,
+    "wires": [
+      [
+        "confirm-save-msg-id"
+      ]
+    ]
+  },
+  {
+    "id": "confirm-save-msg-id",
+    "type": "function",
+    "z": "tab-fsm",
+    "name": "save confirm_msg_id",
+    "func": "if (!msg.payload || !msg.payload.ok || !msg.payload.result) return null;\nconst msgId = msg.payload.result.message_id;\n// Додаємо confirm_msg_id у вже існуючий context\nmsg.query = `UPDATE user_sessions SET context = COALESCE(context, '{}'::jsonb) || jsonb_build_object('confirm_msg_id', $1::bigint) WHERE telegram_id = $2`;\nmsg.params = [msgId, msg.from.id];\nreturn msg;",
+    "outputs": 1,
+    "x": 1880,
+    "y": 560,
+    "wires": [
+      [
+        "confirm-save-pg"
+      ]
+    ]
+  },
+  {
+    "id": "confirm-save-pg",
+    "type": "postgresql",
+    "z": "tab-fsm",
+    "name": "UPDATE",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 2100,
+    "y": 560,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "fsm-birthday-fail",
+    "type": "function",
+    "z": "tab-fsm",
+    "name": "ask again",
+    "func": "msg.tgMethod='sendMessage';\nmsg.tgBody={\n    chat_id: msg.chatId,\n    text: '❌ Не зрозумів дату. Спробуй у форматі <code>1995-03-15</code> або <code>15.03.1995</code>, або <code>15 березня 1995</code>.',\n    parse_mode:'HTML',\n    reply_markup:{ inline_keyboard: [[{ text:'❌ Скасувати', callback_data:'add_cancel' }]] }\n};\nreturn msg;",
+    "outputs": 1,
+    "x": 1220,
+    "y": 480,
+    "wires": [
+      [
+        "fsm-send-dialog"
+      ]
+    ]
+  },
+  {
+    "id": "fsm-interests-in",
+    "type": "link in",
+    "z": "tab-fsm",
+    "name": "awaiting_interests",
+    "links": [
+      "text-to-fsm-interests"
+    ],
+    "x": 120,
+    "y": 1040,
+    "wires": [
+      [
+        "fsm-interests-save"
+      ]
+    ]
+  },
+  {
+    "id": "fsm-interests-save",
+    "type": "function",
+    "z": "tab-fsm",
+    "name": "save interests + reset",
+    "func": "const interests = (msg.text || '').trim();\nif (interests.length < 2 || interests.length > 500) {\n    msg.tgMethod='sendMessage';\n    msg.tgBody={chat_id:msg.chatId,text:'Опис має бути 2-500 символів. Спробуй ще раз або /cancel.'};\n    return [null, msg];\n}\nconst ctx = msg.session.context || {};\nconst cid = ctx.contact_id;\nif (!cid) { msg.tgMethod='sendMessage'; msg.tgBody={chat_id:msg.chatId,text:'Контакт не знайдено. Спробуй повернутися в меню'}; return [null, msg]; }\nmsg._contactId = cid;\nmsg._interests = interests;\nmsg.query = `UPDATE contacts SET interests=$1 WHERE id=$2 AND owner_id=$3 RETURNING id, name, birthday, interests, relationship, DATE_PART('year', AGE(birthday))::INT AS age`;\nmsg.params = [interests, cid, msg.from.id];\nreturn [msg, null];",
+    "outputs": 2,
+    "x": 340,
+    "y": 1040,
+    "wires": [
+      [
+        "fsm-interests-pg"
+      ],
+      [
+        "fsm-send-interests"
+      ]
+    ]
+  },
+  {
+    "id": "fsm-interests-pg",
+    "type": "postgresql",
+    "z": "tab-fsm",
+    "name": "UPDATE contact",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 560,
+    "y": 1040,
+    "wires": [
+      [
+        "fsm-interests-reset"
+      ]
+    ]
+  },
+  {
+    "id": "fsm-interests-reset",
+    "type": "function",
+    "z": "tab-fsm",
+    "name": "reset session + gen gifts",
+    "func": "msg._contactRow = msg.payload && msg.payload[0];\nmsg.query = `UPDATE user_sessions SET state='idle', context=NULL WHERE telegram_id=$1`;\nmsg.params = [msg.from.id];\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 1040,
+    "wires": [
+      [
+        "fsm-interests-reset-pg"
+      ]
+    ]
+  },
+  {
+    "id": "fsm-interests-reset-pg",
+    "type": "postgresql",
+    "z": "tab-fsm",
+    "name": "session idle",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1000,
+    "y": 1040,
+    "wires": [
+      [
+        "fsm-interests-saved-ack"
+      ]
+    ]
+  },
+  {
+    "id": "fsm-interests-saved-ack",
+    "type": "function",
+    "z": "tab-fsm",
+    "name": "ack + trigger AI gifts",
+    "func": "function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\nconst c = msg._contactRow;\nif (!c) return null;\n\n// Перше повідомлення — швидкий ack\nconst ack = {\n    tgMethod: 'sendMessage',\n    tgBody: { chat_id: msg.chatId, text: `💡 Зберіг інтереси для <b>${esc(c.name)}</b>. Генерую ідеї подарунків...`, parse_mode:'HTML' },\n    chatId: msg.chatId\n};\n\n// Друге повідомлення — передаємо в AI gift gen (msg.payload = contact row)\nmsg.payload = [c];\nmsg.chatId = msg.chatId;\nreturn [ack, msg];",
+    "outputs": 2,
+    "x": 1220,
+    "y": 1040,
+    "wires": [
+      [
+        "fsm-send-interests"
+      ],
+      [
+        "ai-gift-in-internal"
+      ]
+    ]
+  },
+  {
+    "id": "ai-gift-in-internal",
+    "type": "link out",
+    "z": "tab-fsm",
+    "name": "-> Gift AI",
+    "mode": "link",
+    "links": [
+      "ai-gift-in"
+    ],
+    "x": 1440,
+    "y": 1040,
+    "wires": []
+  },
+  {
+    "id": "clarify-in",
+    "type": "link in",
+    "z": "tab-fsm",
+    "name": "clarify",
+    "links": [
+      "text-to-clarify"
+    ],
+    "x": 120,
+    "y": 800,
+    "wires": [
+      [
+        "clarify-handler"
+      ]
+    ]
+  },
+  {
+    "id": "clarify-handler",
+    "type": "function",
+    "z": "tab-fsm",
+    "name": "dispatch pending intent",
+    "func": "const ctx = msg.session.context || {};\nconst pendingIntent = ctx.intent;\nconst name = (msg.text || '').trim();\n\nif (!pendingIntent || !name) {\n    msg.tgMethod='sendMessage';\n    msg.tgBody={chat_id:msg.chatId,text:'Не зрозумів. Спробуй ще раз.'};\n    return [null, msg, null];\n}\n\n// Відновлюємо intent з заповненим ім'ям\nmsg._intent = { intent: pendingIntent, name, date: null, interests: null, confidence: 1.0 };\n\n// Ресетимо сесію\nmsg.query = `UPDATE user_sessions SET state='idle', context=NULL WHERE telegram_id=$1`;\nmsg.params = [msg.from.id];\n\nreturn [msg, null, msg];",
+    "outputs": 3,
+    "x": 340,
+    "y": 800,
+    "wires": [
+      [
+        "clarify-reset-pg"
+      ],
+      [
+        "fsm-send-clarify"
+      ],
+      [
+        "clarify-dispatch"
+      ]
+    ]
+  },
+  {
+    "id": "clarify-reset-pg",
+    "type": "postgresql",
+    "z": "tab-fsm",
+    "name": "reset session",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 780,
+    "y": 800,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "clarify-dispatch",
+    "type": "switch",
+    "z": "tab-fsm",
+    "name": "by intent",
+    "property": "_intent.intent",
+    "propertyType": "msg",
+    "rules": [
+      {
+        "t": "eq",
+        "v": "query_birthday",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "suggest_gift",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "delete_contact",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "show_contact_detail",
+        "vt": "str"
+      },
+      {
+        "t": "else"
+      }
+    ],
+    "outputs": 5,
+    "x": 560,
+    "y": 800,
+    "wires": [
+      [
+        "fsm-clarify-to-query"
+      ],
+      [
+        "fsm-clarify-to-gift"
+      ],
+      [
+        "fsm-clarify-to-delete"
+      ],
+      [
+        "fsm-clarify-to-detail"
+      ],
+      []
+    ]
+  },
+  {
+    "id": "refine-add-in",
+    "type": "link in",
+    "z": "tab-fsm",
+    "name": "refine add",
+    "links": [
+      "text-to-refine"
+    ],
+    "x": 120,
+    "y": 1120,
+    "wires": [
+      [
+        "refine-add-build",
+        "refine-delete-user-msg"
+      ]
+    ]
+  },
+  {
+    "id": "refine-delete-user-msg",
+    "type": "function",
+    "z": "tab-fsm",
+    "name": "Try delete user msg",
+    "func": "if (!msg.messageId) return null;\nconst del = { tgMethod: 'deleteMessage', tgBody: { chat_id: msg.chatId, message_id: msg.messageId }, chatId: msg.chatId };\nreturn del;",
+    "outputs": 1,
+    "x": 340,
+    "y": 1280,
+    "wires": [
+      [
+        "fsm-send-refine"
+      ]
+    ]
+  },
+  {
+    "id": "refine-add-build",
+    "type": "function",
+    "z": "tab-fsm",
+    "name": "build refine AI request",
+    "func": "const token = env.get('TOGETHER_API_KEY');\nconst model = env.get('AI_MODEL');\nif (!token || !model) { msg.tgMethod='sendMessage'; msg.tgBody={chat_id:msg.chatId,text:'AI недоступний. Натисни ❌ Скасувати та почни знову.'}; return [null, msg]; }\n\nconst ctx = msg.session.context || {};\nconst today = new Date().toLocaleDateString('en-CA', {timeZone:'Europe/Kyiv'});\nconst year = parseInt(today.slice(0,4));\n\nmsg._userText = msg.text;\nmsg.url = 'https://api.together.xyz/v1/chat/completions';\nmsg.method = 'POST';\nmsg.headers = { 'Content-Type':'application/json', 'Authorization': 'Bearer ' + token };\n\nconst systemPrompt = 'Ти парсер корекцій контакту. Поверни JSON з РЕАЛЬНИМИ значеннями полів. НЕ повертай плейсхолдери типу \"string\".\\n\\nПРАВИЛА:\\n1. Змінюй ТІЛЬКИ те, що юзер виправив у своєму повідомленні.\\n2. Для незмінених полів — повернь те ж значення що було (з поточних даних).\\n3. Дата у форматі YYYY-MM-DD, завжди у минулому.\\n\\nСьогодні ' + today + '. Поточний рік: ' + year + '.\\n\\nПРИКЛАД:\\nПоточні: name=Марія, date=2005-04-25, interests=гуляти\\nКорекція: \"26 числа\"\\nJSON: {\"name\":\"Марія\",\"date\":\"2005-04-26\",\"interests\":\"гуляти\"}';\n\nconst userPrompt = 'Поточні: name=' + (ctx.name||'') + ', date=' + (ctx.date||'') + ', interests=' + (ctx.interests||'') + '\\n\\nКорекція: ' + msg.text + '\\n\\nПоверни JSON з конкретними значеннями.';\n\nmsg.payload = {\n    model, temperature: 0.1, max_tokens: 300,\n    response_format: { type: 'json_object' },\n    messages: [\n        { role:'system', content: systemPrompt },\n        { role:'user', content: userPrompt }\n    ]\n};\n\nconst typing = { tgMethod: 'sendChatAction', tgBody: { chat_id: msg.chatId, action: 'typing' }, chatId: msg.chatId };\nreturn [msg, typing];",
+    "outputs": 2,
+    "x": 340,
+    "y": 1120,
+    "wires": [
+      [
+        "refine-add-http"
+      ],
+      [
+        "fsm-send-refine"
+      ]
+    ]
+  },
+  {
+    "id": "refine-add-http",
+    "type": "http request",
+    "z": "tab-fsm",
+    "name": "POST Together refine",
+    "method": "use",
+    "ret": "obj",
+    "url": "",
+    "persist": false,
+    "x": 560,
+    "y": 1120,
+    "wires": [
+      [
+        "refine-add-parse"
+      ]
+    ]
+  },
+  {
+    "id": "refine-add-parse",
+    "type": "function",
+    "z": "tab-fsm",
+    "name": "apply refinement",
+    "func": "const ctx = msg.session.context || {};\nlet name = ctx.name, date = ctx.date, interests = ctx.interests;\n\n// Валідує чи value не плейсхолдер з prompt (\"string\", \"null\" як текст)\nfunction valid(v) { return v && v !== 'string' && v !== 'null' && v !== 'YYYY-MM-DD'; }\n\ntry {\n    const content = msg.payload && msg.payload.choices && msg.payload.choices[0].message.content;\n    if (content) {\n        const p = JSON.parse(content);\n        if (valid(p.name)) name = p.name;\n        if (valid(p.date) && /^\\d{4}-\\d{2}-\\d{2}$/.test(p.date)) date = p.date;\n        if (p.interests !== undefined && valid(p.interests)) interests = p.interests;\n    }\n} catch (e) { node.warn('refine parse fail: '+e.message); }\n\nnode.warn('[REFINE] text=' + msg.text + ' → name=' + name + ' date=' + date + ' int=' + interests);\n\nmsg._confirmName = name;\nmsg._confirmDate = date;\nmsg._confirmInterests = interests;\nmsg.query = \"UPDATE user_sessions SET state='confirming_add', context=jsonb_build_object('name',$1::text,'date',$2::text,'interests',$3::text) WHERE telegram_id=$4\";\nmsg.params = [name, date, interests, msg.from.id];\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 1120,
+    "wires": [
+      [
+        "refine-add-pg"
+      ]
+    ]
+  },
+  {
+    "id": "refine-add-pg",
+    "type": "postgresql",
+    "z": "tab-fsm",
+    "name": "UPDATE context",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1000,
+    "y": 1120,
+    "wires": [
+      [
+        "fsm-birthday-ok-reply"
+      ]
+    ]
+  },
+  {
+    "id": "fsm-clarify-to-query",
+    "type": "link out",
+    "z": "tab-fsm",
+    "name": "clarify -> query birthday",
+    "mode": "link",
+    "links": [
+      "ai-query-birthday-in"
+    ],
+    "x": 1000,
+    "y": 720,
+    "wires": []
+  },
+  {
+    "id": "fsm-clarify-to-gift",
+    "type": "link out",
+    "z": "tab-fsm",
+    "name": "clarify -> suggest gift",
+    "mode": "link",
+    "links": [
+      "ai-suggest-gift-in"
+    ],
+    "x": 1000,
+    "y": 800,
+    "wires": []
+  },
+  {
+    "id": "fsm-clarify-to-delete",
+    "type": "link out",
+    "z": "tab-fsm",
+    "name": "clarify -> delete contact",
+    "mode": "link",
+    "links": [
+      "ai-delete-contact-in"
+    ],
+    "x": 1000,
+    "y": 880,
+    "wires": []
+  },
+  {
+    "id": "fsm-clarify-to-detail",
+    "type": "link out",
+    "z": "tab-fsm",
+    "name": "clarify -> contact detail",
+    "mode": "link",
+    "links": [
+      "ai-show-detail-in"
+    ],
+    "x": 1000,
+    "y": 960,
+    "wires": []
+  },
+  {
+    "id": "fsm-ai-confirm-in",
+    "type": "link in",
+    "z": "tab-fsm",
+    "name": "render add confirmation",
+    "links": [
+      "ai-intent-confirm-out"
+    ],
+    "x": 1440,
+    "y": 640,
+    "wires": [
+      [
+        "fsm-birthday-ok-reply"
+      ]
+    ]
+  },
+  {
+    "id": "fsm-send-dialog",
+    "type": "link out",
+    "z": "tab-fsm",
+    "name": "send dialog reply",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 1880,
+    "y": 320,
+    "wires": []
+  },
+  {
+    "id": "fsm-send-clarify",
+    "type": "link out",
+    "z": "tab-fsm",
+    "name": "send clarify reply",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 1220,
+    "y": 800,
+    "wires": []
+  },
+  {
+    "id": "fsm-send-interests",
+    "type": "link out",
+    "z": "tab-fsm",
+    "name": "send interests reply",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 1660,
+    "y": 1040,
+    "wires": []
+  },
+  {
+    "id": "fsm-send-refine",
+    "type": "link out",
+    "z": "tab-fsm",
+    "name": "send refine reply",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 1220,
+    "y": 1200,
+    "wires": []
+  },
+  {
+    "id": "ai-intent-in",
+    "type": "link in",
+    "z": "tab-ai-intent",
+    "name": "idle text",
+    "links": [
+      "text-to-ai-intent"
+    ],
+    "x": 120,
+    "y": 160,
+    "wires": [
+      [
+        "ai-intent-prefilter"
+      ]
+    ]
+  },
+  {
+    "id": "ai-intent-prefilter",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "Regex pre-filter",
+    "func": "// Детермінований pre-filter для команд, де regex стовідсотково правий.\n// Імена не нормалізуємо — pg_trgm downstream впорається з відмінками.\nconst t = (msg.text || '').trim();\nconst tl = t.toLowerCase();\n// Стоп-слова — щоб \"забудь що я казав\" не зматчилось як delete_contact name=\"що\"\nconst STOP = /^(що|як|де|коли|чому|всіх|всі|усі|мене|тебе|нас|вас|їх|його|її)$/i;\n\nlet hit = null;\n// nameless intents — детерміновані 100%\nif (/^(привіт|вітаю|здоров|добрий день|добрий ранок|добрий вечір|hi|hello)\\b/i.test(t))\n    hit = { intent: 'greet' };\nelse if (/^(допомог|поможи|допоможи|як користуват|що ти вмі|що тут робити|help)/i.test(tl))\n    hit = { intent: 'help' };\nelse if (/^(всі|покажи всіх|покажи всі|мої контакти|список|усі контакти)\\b/i.test(tl))\n    hit = { intent: 'list_all' };\nelse if (/^(найближч|хто скоро|скоро дн|скоро день народ)/i.test(tl))\n    hit = { intent: 'upcoming' };\n// delete_contact — verb явний, ім'я сирим (downstream fuzzy match)\nelse {\n    const m = t.match(/^(?:видали|забудь|прибери)\\s+([А-ЯҐЄІЇа-яґєії']{2,})\\s*$/i);\n    if (m && !STOP.test(m[1])) hit = { intent: 'delete_contact', name: m[1] };\n}\n// show_contact_detail — \"про X\" / \"інфо про X\" однозначно про людину\nif (!hit) {\n    const m = t.match(/^(?:розкажи про|інфо про)\\s+([А-ЯҐЄІЇа-яґєії']{2,})\\s*$/i);\n    if (m && !STOP.test(m[1])) hit = { intent: 'show_contact_detail', name: m[1] };\n}\n\nif (hit) {\n    msg._intent = { intent: hit.intent, name: hit.name || null, date: null, interests: null, confidence: 1.0 };\n    node.warn(`[REGEX INTENT] \"${t}\" → ${hit.intent}${hit.name ? ' name=' + hit.name : ''}`);\n    return [msg, null];\n}\nreturn [null, msg];",
+    "outputs": 2,
+    "x": 340,
+    "y": 160,
+    "wires": [
+      [
+        "ai-intent-branch",
+        "dbg-ai-intent"
+      ],
+      [
+        "ai-intent-load-prompt"
+      ]
+    ]
+  },
+  {
+    "id": "ai-intent-load-prompt",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "Load intent prompt + typing",
+    "func": "msg._userText = msg.text;\n// Шлемо typing action одразу — юзер бачить що бот думає\nconst typing = { tgMethod: 'sendChatAction', tgBody: { chat_id: msg.chatId, action: 'typing' }, chatId: msg.chatId };\n// Головний потік — SELECT prompt з БД\nmsg.query = 'SELECT system_prompt, temperature, max_tokens FROM ai_prompts WHERE key = $1';\nmsg.params = ['intent_parser'];\nreturn [typing, msg];",
+    "outputs": 2,
+    "x": 560,
+    "y": 160,
+    "wires": [
+      [
+        "ai-send-parser"
+      ],
+      [
+        "ai-intent-load-prompt-pg"
+      ]
+    ]
+  },
+  {
+    "id": "ai-intent-load-prompt-pg",
+    "type": "postgresql",
+    "z": "tab-ai-intent",
+    "name": "SELECT prompt",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 780,
+    "y": 160,
+    "wires": [
+      [
+        "ai-intent-prepare"
+      ]
+    ]
+  },
+  {
+    "id": "ai-intent-prepare",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "AI intent — build request",
+    "func": "const token = env.get('TOGETHER_API_KEY');\nconst model = env.get('AI_MODEL');\nif (!model) { node.error('AI_MODEL env var not set'); return null; }\nif (!token) { msg._noAI = true; return msg; }\n\nconst promptRow = (msg.payload && msg.payload[0]) || {};\nlet systemPrompt = promptRow.system_prompt;\nconst temperature = Number(promptRow.temperature) || 0.1;\nconst max_tokens = Number(promptRow.max_tokens) || 300;\nif (!systemPrompt) { node.error('intent_parser prompt not in DB'); return null; }\n\n// Інʼєкція поточної дати в Europe/Kyiv timezone\nconst today = new Date().toLocaleDateString('en-CA', {timeZone:'Europe/Kyiv'});\nconst year = parseInt(today.slice(0, 4));\nsystemPrompt = `Сьогодні: ${today}. Поточний рік: ${year}.\\n\\n` + systemPrompt;\n\nmsg.url = 'https://api.together.xyz/v1/chat/completions';\nmsg.method = 'POST';\nmsg.headers = { 'Content-Type':'application/json', 'Authorization': `Bearer ${token}` };\nmsg.payload = {\n    model,\n    temperature,\n    max_tokens,\n    response_format: { type: 'json_object' },\n    messages: [\n        { role: 'system', content: systemPrompt },\n        { role: 'user', content: msg._userText }\n    ]\n};\nreturn msg;",
+    "outputs": 1,
+    "x": 1000,
+    "y": 160,
+    "wires": [
+      [
+        "ai-intent-http"
+      ]
+    ]
+  },
+  {
+    "id": "ai-intent-http",
+    "type": "http request",
+    "z": "tab-ai-intent",
+    "name": "POST Together",
+    "method": "use",
+    "ret": "obj",
+    "url": "",
+    "persist": false,
+    "x": 1220,
+    "y": 160,
+    "wires": [
+      [
+        "ai-intent-parse"
+      ]
+    ]
+  },
+  {
+    "id": "ai-intent-parse",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "Parse intent",
+    "func": "let intent='unclear', name=null, date=null, interests=null, confidence=0;\ntry {\n    const content = msg.payload && msg.payload.choices && msg.payload.choices[0].message.content;\n    if (content) {\n        const p = JSON.parse(content);\n        intent = p.intent || 'unclear';\n        name = p.name || null;\n        date = p.date || null;\n        interests = p.interests || null;\n        confidence = Number(p.confidence) || 0;\n    }\n} catch (e) { node.warn('AI intent parse fail: '+e.message); }\n\nfunction kyivToday() {\n    return new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Kyiv' }));\n}\nfunction ymd(d) {\n    const y = d.getFullYear();\n    const m = String(d.getMonth() + 1).padStart(2, '0');\n    const day = String(d.getDate()).padStart(2, '0');\n    return y + '-' + m + '-' + day;\n}\nfunction addDays(d, days) {\n    const x = new Date(d);\n    x.setDate(x.getDate() + days);\n    return x;\n}\nfunction hasWord(text, unicodePattern) {\n    return new RegExp(unicodePattern, 'i').test(text || '');\n}\nfunction relativeBirthdayDate(text, today) {\n    const t = (text || '').toLowerCase();\n    if (hasWord(t, '\\\\u043f\\\\u0456\\\\u0441\\\\u043b\\\\u044f\\\\u0437\\\\u0430\\\\u0432\\\\u0442\\\\u0440\\\\u0430')) return addDays(today, 2);\n    if (hasWord(t, '\\\\u0437\\\\u0430\\\\u0432\\\\u0442\\\\u0440\\\\u0430')) return addDays(today, 1);\n    if (hasWord(t, '\\\\u0441\\\\u044c\\\\u043e\\\\u0433\\\\u043e\\\\u0434\\\\u043d\\\\u0456')) return addDays(today, 0);\n    return null;\n}\nfunction extractAge(text) {\n    const agePattern = '(?:\\\\u0457\\\\u0439|\\\\u0439\\\\u043e\\\\u043c\\\\u0443|\\\\u0431\\\\u0443\\\\u0434\\\\u0435|\\\\u0432\\\\u0438\\\\u043f\\\\u043e\\\\u0432\\\\u043d\\\\u0438\\\\u0442\\\\u044c\\\\u0441\\\\u044f|\\\\u0432\\\\u0438\\\\u043f\\\\u043e\\\\u0432\\\\u043d\\\\u044e\\\\u0454\\\\u0442\\\\u044c\\\\u0441\\\\u044f|\\\\u0441\\\\u0442\\\\u0443\\\\u043a\\\\u043d\\\\u0435)?\\\\s*(\\\\d{1,3})\\\\s*(?:\\\\u0440\\\\u0456\\\\u043a|\\\\u0440\\\\u043e\\\\u043a\\\\u0438|\\\\u0440\\\\u043e\\\\u043a\\\\u0456\\\\u0432|\\\\u0440\\\\u043e\\\\u043a\\\\u0443)(?=\\\\s|$|[,.!?;:])';\n    const m = String(text || '').match(new RegExp(agePattern, 'i'));\n    if (!m) return null;\n    const age = Number(m[1]);\n    return age >= 0 && age <= 120 ? age : null;\n}\nfunction isTurningAgePhrase(text) {\n    const turningPattern = '(?:\\\\u0431\\\\u0443\\\\u0434\\\\u0435|\\\\u0432\\\\u0438\\\\u043f\\\\u043e\\\\u0432\\\\u043d\\\\u0438\\\\u0442\\\\u044c\\\\u0441\\\\u044f|\\\\u0432\\\\u0438\\\\u043f\\\\u043e\\\\u0432\\\\u043d\\\\u044e\\\\u0454\\\\u0442\\\\u044c\\\\u0441\\\\u044f|\\\\u0441\\\\u0442\\\\u0443\\\\u043a\\\\u043d\\\\u0435)\\\\s*\\\\d{1,3}\\\\s*(?:\\\\u0440\\\\u0456\\\\u043a|\\\\u0440\\\\u043e\\\\u043a\\\\u0438|\\\\u0440\\\\u043e\\\\u043a\\\\u0456\\\\u0432|\\\\u0440\\\\u043e\\\\u043a\\\\u0443)(?=\\\\s|$|[,.!?;:])';\n    return new RegExp(turningPattern, 'i').test(String(text || ''));\n}\n\nif (intent === 'add_contact') {\n    const text = msg._userText || msg.text || '';\n    const age = extractAge(text);\n    const today = kyivToday();\n    const target = relativeBirthdayDate(text, today);\n    if (age !== null && target) {\n        const todayYmd = ymd(today);\n        const targetYmd = ymd(target);\n        const targetIsFuture = targetYmd > todayYmd;\n        const turningAge = isTurningAgePhrase(text) ? age : age + (targetIsFuture ? 1 : 0);\n        const birthYear = target.getFullYear() - turningAge;\n        date = birthYear + '-' + String(target.getMonth() + 1).padStart(2, '0') + '-' + String(target.getDate()).padStart(2, '0');\n        confidence = Math.max(confidence, 0.9);\n        msg._dateCorrected = { reason: 'relative_age_birthday', age, turningAge, target: targetYmd, date };\n    }\n}\n\nnode.warn('[AI INTENT] \"' + msg.text + '\" -> ' + intent + ' (name=' + name + ', date=' + date + ', int=' + interests + ', conf=' + confidence + ')');\nif (msg._dateCorrected) node.warn('[DATE FIX] ' + JSON.stringify(msg._dateCorrected));\nmsg._intent = { intent, name, date, interests, confidence };\nreturn msg;",
+    "outputs": 1,
+    "x": 1440,
+    "y": 160,
+    "wires": [
+      [
+        "ai-intent-branch",
+        "dbg-ai-intent"
+      ]
+    ]
+  },
+  {
+    "id": "dbg-ai-intent",
+    "type": "debug",
+    "z": "tab-ai-intent",
+    "name": "DBG: AI intent",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "complete": "_intent",
+    "targetType": "msg",
+    "statusVal": "_intent.intent",
+    "statusType": "msg",
+    "x": 1440,
+    "y": 320,
+    "wires": []
+  },
+  {
+    "id": "ai-intent-branch",
+    "type": "switch",
+    "z": "tab-ai-intent",
+    "name": "by intent",
+    "property": "_intent.intent",
+    "propertyType": "msg",
+    "rules": [
+      {
+        "t": "eq",
+        "v": "query_birthday",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "list_all",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "upcoming",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "add_contact",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "suggest_gift",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "update_interests",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "delete_contact",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "show_contact_detail",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "greet",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "help",
+        "vt": "str"
+      },
+      {
+        "t": "else"
+      }
+    ],
+    "outputs": 11,
+    "x": 1660,
+    "y": 160,
+    "wires": [
+      [
+        "ai-query-birthday"
+      ],
+      [
+        "ai-to-list"
+      ],
+      [
+        "ai-to-upcoming"
+      ],
+      [
+        "ai-to-add"
+      ],
+      [
+        "ai-suggest-gift"
+      ],
+      [
+        "ai-update-interests"
+      ],
+      [
+        "ai-delete-contact"
+      ],
+      [
+        "ai-show-detail"
+      ],
+      [
+        "ai-greet"
+      ],
+      [
+        "ai-help"
+      ],
+      [
+        "ai-unclear"
+      ]
+    ]
+  },
+  {
+    "id": "ai-query-birthday",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "query birthday",
+    "func": "const name = msg._intent.name;\nif (!name) {\n    msg.query = `UPDATE user_sessions SET state='clarify_name', context=$1::jsonb WHERE telegram_id=$2`;\n    msg.params = [JSON.stringify({intent:'query_birthday'}), msg.from.id];\n    msg.tgMethod='sendMessage';\n    msg.tgBody={chat_id:msg.chatId,text:'Про кого питаєш? Напиши імʼя, наприклад «Оля»',reply_markup:{inline_keyboard:[[{text:'❌ Скасувати',callback_data:'add_cancel'}]]}};\n    return [msg, msg];\n}\nmsg.query = `SELECT name, TO_CHAR(birthday, 'DD.MM.YYYY') AS bd, (MAKE_DATE(EXTRACT(YEAR FROM CURRENT_DATE)::INT, EXTRACT(MONTH FROM birthday)::INT, EXTRACT(DAY FROM birthday)::INT) - CURRENT_DATE) AS days FROM contacts WHERE owner_id=$1 AND (similarity(LOWER(name), LOWER($2)) > 0.3 OR LOWER(name) ILIKE '%' || LOWER($2) || '%') ORDER BY similarity(LOWER(name), LOWER($2)) DESC LIMIT 5`;\nmsg.params = [msg.from.id, name];\nreturn [msg, null];",
+    "outputs": 2,
+    "x": 340,
+    "y": 480,
+    "wires": [
+      [
+        "ai-query-pg"
+      ],
+      [
+        "ai-send-query"
+      ]
+    ]
+  },
+  {
+    "id": "ai-query-pg",
+    "type": "postgresql",
+    "z": "tab-ai-intent",
+    "name": "SELECT",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 560,
+    "y": 480,
+    "wires": [
+      [
+        "ai-query-reply"
+      ]
+    ]
+  },
+  {
+    "id": "ai-query-reply",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "format reply",
+    "func": "function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\n// Skip якщо це результат UPDATE для clarify_name — не SELECT\nif (!msg._intent || !msg._intent.name) return null;\nconst rows = msg.payload || [];\nif (rows.length === 0) {\n    msg.tgMethod='sendMessage';\n    msg.tgBody={chat_id:msg.chatId,text:`🤷 Не знайшов «${esc(msg._intent.name)}» у твоїх контактах.\\n\\nДодай через меню або просто напиши: «додай Імʼя 15.03.1990»`};\n    return msg;\n}\nconst lines = [];\nrows.forEach(r => {\n    const d = parseInt(r.days);\n    let when = d === 0 ? '🎉 <b>сьогодні!</b>' : d === 1 ? 'завтра' : d > 0 ? `через ${d} дн.` : `${-d} дн. тому`;\n    lines.push(`🎂 <b>${esc(r.name)}</b>: ${r.bd} (${when})`);\n});\nmsg.tgMethod='sendMessage';\nmsg.tgBody={chat_id:msg.chatId,text:lines.join('\\n'),parse_mode:'HTML'};\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 480,
+    "wires": [
+      [
+        "ai-send-query"
+      ]
+    ]
+  },
+  {
+    "id": "ai-to-list",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "render contact list intent",
+    "func": "msg.query = `SELECT id, name, TO_CHAR(birthday, 'DD.MM.YYYY') AS birthday_fmt, (MAKE_DATE(EXTRACT(YEAR FROM CURRENT_DATE)::INT, EXTRACT(MONTH FROM birthday)::INT, EXTRACT(DAY FROM birthday)::INT) - CURRENT_DATE) AS days_until FROM contacts WHERE owner_id = $1 ORDER BY EXTRACT(MONTH FROM birthday), EXTRACT(DAY FROM birthday)`;\nmsg.params = [msg.from.id];\nmsg._useEdit = false;\nreturn msg;",
+    "outputs": 1,
+    "x": 1880,
+    "y": 400,
+    "wires": [
+      [
+        "ai-to-render-list"
+      ]
+    ]
+  },
+  {
+    "id": "ai-to-render-list",
+    "type": "link out",
+    "z": "tab-ai-intent",
+    "name": "→ render list",
+    "mode": "link",
+    "links": [
+      "render-list-in"
+    ],
+    "x": 2100,
+    "y": 400,
+    "wires": []
+  },
+  {
+    "id": "ai-to-upcoming",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "render upcoming intent",
+    "func": "msg.query = `SELECT name, TO_CHAR(birthday, 'DD.MM.YYYY') AS bd, (MAKE_DATE(EXTRACT(YEAR FROM CURRENT_DATE)::INT, EXTRACT(MONTH FROM birthday)::INT, EXTRACT(DAY FROM birthday)::INT) - CURRENT_DATE) AS days FROM contacts WHERE owner_id=$1 AND (MAKE_DATE(EXTRACT(YEAR FROM CURRENT_DATE)::INT, EXTRACT(MONTH FROM birthday)::INT, EXTRACT(DAY FROM birthday)::INT) - CURRENT_DATE) BETWEEN 0 AND 30 ORDER BY days LIMIT 10`;\nmsg.params = [msg.from.id];\nmsg._useEdit = false;\nreturn msg;",
+    "outputs": 1,
+    "x": 1880,
+    "y": 480,
+    "wires": [
+      [
+        "ai-to-render-upcoming"
+      ]
+    ]
+  },
+  {
+    "id": "ai-to-render-upcoming",
+    "type": "link out",
+    "z": "tab-ai-intent",
+    "name": "→ render upcoming",
+    "mode": "link",
+    "links": [
+      "render-upcoming-in"
+    ],
+    "x": 2100,
+    "y": 480,
+    "wires": []
+  },
+  {
+    "id": "ai-to-add",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "handle add_contact intent",
+    "func": "// Якщо AI одразу витяг і name і date з достатньою впевненістю — одразу ведемо на confirm.\nconst ai = msg._intent;\nif (ai && ai.name && ai.date && ai.confidence >= 0.7) {\n    const interests = ai.interests || null;\n    msg.query = `UPDATE user_sessions SET state='confirming_add', context=jsonb_build_object('name',$1::text,'date',$2::text,'interests',$3::text) WHERE telegram_id=$4`;\n    msg.params = [ai.name, ai.date, interests, msg.from.id];\n    msg._confirmName = ai.name;\n    msg._confirmDate = ai.date;\n    msg._confirmInterests = interests;\n    return [null, msg];\n}\n// fallback: старт FSM звичайний\nmsg.query = `UPDATE user_sessions SET state='awaiting_name', context='{}'::jsonb WHERE telegram_id=$1`;\nmsg.params = [msg.from.id];\nmsg._useEdit = false;\nreturn [msg, null];",
+    "outputs": 2,
+    "x": 1880,
+    "y": 560,
+    "wires": [
+      [
+        "ai-to-render-add"
+      ],
+      [
+        "ai-add-direct-pg"
+      ]
+    ]
+  },
+  {
+    "id": "ai-to-render-add",
+    "type": "link out",
+    "z": "tab-ai-intent",
+    "name": "fallback -> ask name",
+    "mode": "link",
+    "links": [
+      "render-add-name-in"
+    ],
+    "x": 2100,
+    "y": 560,
+    "wires": []
+  },
+  {
+    "id": "ai-add-direct-pg",
+    "type": "postgresql",
+    "z": "tab-ai-intent",
+    "name": "save add draft",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 2100,
+    "y": 640,
+    "wires": [
+      [
+        "ai-intent-confirm-out"
+      ]
+    ]
+  },
+  {
+    "id": "ai-suggest-gift",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "suggest gift — find contact",
+    "func": "const name = msg._intent.name;\nif (!name) {\n    msg.query = `UPDATE user_sessions SET state='clarify_name', context=$1::jsonb WHERE telegram_id=$2`;\n    msg.params = [JSON.stringify({intent:'suggest_gift'}), msg.from.id];\n    msg.tgMethod='sendMessage';\n    msg.tgBody={chat_id:msg.chatId,text:'Для кого шукаємо подарунок? Напиши імʼя',reply_markup:{inline_keyboard:[[{text:'❌ Скасувати',callback_data:'add_cancel'}]]}};\n    return [msg, msg, null];\n}\nconst typing = { tgMethod: 'sendChatAction', tgBody: { chat_id: msg.chatId, action: 'typing' }, chatId: msg.chatId };\nmsg.query = `SELECT id, name, birthday, interests, relationship, DATE_PART('year', AGE(birthday))::INT AS age FROM contacts WHERE owner_id=$1 AND (similarity(LOWER(name), LOWER($2)) > 0.3 OR LOWER(name) ILIKE '%' || LOWER($2) || '%') ORDER BY similarity(LOWER(name), LOWER($2)) DESC LIMIT 1`;\nmsg.params = [msg.from.id, name];\nreturn [msg, null, typing];",
+    "outputs": 3,
+    "x": 340,
+    "y": 720,
+    "wires": [
+      [
+        "ai-suggest-gift-pg"
+      ],
+      [
+        "ai-send-gift-route"
+      ],
+      [
+        "ai-send-gift-route"
+      ]
+    ]
+  },
+  {
+    "id": "ai-suggest-gift-pg",
+    "type": "postgresql",
+    "z": "tab-ai-intent",
+    "name": "SELECT contact",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 560,
+    "y": 720,
+    "wires": [
+      [
+        "ai-suggest-gift-check"
+      ]
+    ]
+  },
+  {
+    "id": "ai-suggest-gift-check",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "found? → gift gen : not found",
+    "func": "if (!msg._intent || !msg._intent.name) return null;\nconst rows = msg.payload || [];\nif (rows.length === 0) {\n    msg.tgMethod='sendMessage';\n    msg.tgBody={\n        chat_id: msg.chatId,\n        text: `🤷 Не знайшов «${msg._intent.name}» у твоїх контактах.\\n\\nДодай через меню → AI одразу запропонує ідеї.`,\n        reply_markup: { inline_keyboard: [[{text:'➕ Додати',callback_data:'menu_add'},{text:'🏠 Меню',callback_data:'menu_home'}]] }\n    };\n    return [null, msg];\n}\n// Передаємо в gift gen (msg.payload[0] — контакт)\nreturn [msg, null];",
+    "outputs": 2,
+    "x": 780,
+    "y": 720,
+    "wires": [
+      [
+        "ai-suggest-to-gift"
+      ],
+      [
+        "ai-send-gift-route"
+      ]
+    ]
+  },
+  {
+    "id": "ai-suggest-to-gift",
+    "type": "link out",
+    "z": "tab-ai-intent",
+    "name": "→ gift gen",
+    "mode": "link",
+    "links": [
+      "ai-gift-in"
+    ],
+    "x": 1000,
+    "y": 720,
+    "wires": []
+  },
+  {
+    "id": "ai-update-interests",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "update interests — find",
+    "func": "const name = msg._intent.name;\nconst interests = msg._intent.interests;\nif (!name || !interests) {\n    msg.tgMethod='sendMessage';\n    msg.tgBody={chat_id:msg.chatId,text:'Не зрозумів про кого або які інтереси. Наприклад: «Петро любить футбол»'};\n    return [null, msg];\n}\nmsg.query = `UPDATE contacts SET interests = COALESCE(interests || ', ', '') || $1 WHERE id = (SELECT id FROM contacts WHERE owner_id=$2 AND (similarity(LOWER(name), LOWER($3)) > 0.3 OR LOWER(name) ILIKE '%' || LOWER($3) || '%') ORDER BY similarity(LOWER(name), LOWER($3)) DESC LIMIT 1) RETURNING id, name, birthday, interests, DATE_PART('year', AGE(birthday))::INT AS age`;\nmsg.params = [interests, msg.from.id, name];\nmsg._newInterests = interests;\nreturn [msg, null];",
+    "outputs": 2,
+    "x": 1880,
+    "y": 720,
+    "wires": [
+      [
+        "ai-update-interests-pg"
+      ],
+      [
+        "ai-send-interest"
+      ]
+    ]
+  },
+  {
+    "id": "ai-update-interests-pg",
+    "type": "postgresql",
+    "z": "tab-ai-intent",
+    "name": "UPDATE contact",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 2100,
+    "y": 720,
+    "wires": [
+      [
+        "ai-update-interests-ack"
+      ]
+    ]
+  },
+  {
+    "id": "ai-update-interests-ack",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "ack + offer gifts",
+    "func": "if (!msg._intent || !msg._intent.name) return null;\nfunction esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\nconst rows = msg.payload || [];\nif (rows.length === 0) {\n    msg.tgMethod='sendMessage';\n    msg.tgBody={chat_id:msg.chatId,text:`🤷 Не знайшов «${esc(msg._intent.name)}». Додай спочатку контакт.`,reply_markup:{inline_keyboard:[[{text:'➕ Додати',callback_data:'menu_add'}]]}};\n    return msg;\n}\nconst r = rows[0];\nmsg.tgMethod='sendMessage';\nmsg.tgBody={\n    chat_id: msg.chatId,\n    text: `💡 Оновив інтереси <b>${esc(r.name)}</b>:\\n<i>${esc(r.interests)}</i>\\n\\nЗгенерувати ідеї подарунків?`,\n    parse_mode:'HTML',\n    reply_markup:{ inline_keyboard:[\n        [{text:'🎁 Так, ідеї!', callback_data:'gift:'+r.id}],\n        [{text:'🏠 Меню', callback_data:'menu_home'}]\n    ]}\n};\nmsg.auditAction='interests_updated';\nmsg.auditEntityType='contact';\nmsg.auditEntityId=r.id;\nreturn [msg, msg];",
+    "outputs": 2,
+    "x": 2320,
+    "y": 720,
+    "wires": [
+      [
+        "ai-send-interest"
+      ],
+      [
+        "ai-audit-interest"
+      ]
+    ]
+  },
+  {
+    "id": "ai-delete-contact",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "delete — find contact",
+    "func": "const name = msg._intent.name;\nif (!name) {\n    msg.query = `UPDATE user_sessions SET state='clarify_name', context=$1::jsonb WHERE telegram_id=$2`;\n    msg.params = [JSON.stringify({intent:'delete_contact'}), msg.from.id];\n    msg.tgMethod='sendMessage';\n    msg.tgBody={chat_id:msg.chatId,text:'Кого видалити? Напиши імʼя',reply_markup:{inline_keyboard:[[{text:'❌ Скасувати',callback_data:'add_cancel'}]]}};\n    return [msg, msg];\n}\nmsg.query = `SELECT id, name, TO_CHAR(birthday,'DD.MM.YYYY') AS bd FROM contacts WHERE owner_id=$1 AND (similarity(LOWER(name), LOWER($2)) > 0.3 OR LOWER(name) ILIKE '%' || LOWER($2) || '%') ORDER BY similarity(LOWER(name), LOWER($2)) DESC LIMIT 1`;\nmsg.params = [msg.from.id, name];\nreturn [msg, null];",
+    "outputs": 2,
+    "x": 340,
+    "y": 880,
+    "wires": [
+      [
+        "ai-delete-pg"
+      ],
+      [
+        "ai-send-delete"
+      ]
+    ]
+  },
+  {
+    "id": "ai-delete-pg",
+    "type": "postgresql",
+    "z": "tab-ai-intent",
+    "name": "SELECT",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 560,
+    "y": 880,
+    "wires": [
+      [
+        "ai-delete-confirm"
+      ]
+    ]
+  },
+  {
+    "id": "ai-delete-confirm",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "ask confirm",
+    "func": "if (!msg._intent || !msg._intent.name) return null;\nfunction esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\nconst rows = msg.payload || [];\nif (rows.length === 0) {\n    msg.tgMethod='sendMessage';\n    msg.tgBody={chat_id:msg.chatId,text:`🤷 Не знайшов «${esc(msg._intent.name)}».`};\n    return msg;\n}\nconst r = rows[0];\nmsg.tgMethod='sendMessage';\nmsg.tgBody={\n    chat_id: msg.chatId,\n    text: `Видалити контакт?\\n\\n👤 <b>${esc(r.name)}</b>\\n🎂 ${r.bd}`,\n    parse_mode:'HTML',\n    reply_markup:{ inline_keyboard: [[\n        {text:'🗑 Так, видалити', callback_data:'del_yes:'+r.id},\n        {text:'↩️ Скасувати',     callback_data:'menu_home'}\n    ]]}\n};\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 880,
+    "wires": [
+      [
+        "ai-send-delete"
+      ]
+    ]
+  },
+  {
+    "id": "ai-show-detail",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "detail — find contact",
+    "func": "const name = msg._intent.name;\nif (!name) {\n    msg.query = `UPDATE user_sessions SET state='clarify_name', context=$1::jsonb WHERE telegram_id=$2`;\n    msg.params = [JSON.stringify({intent:'show_contact_detail'}), msg.from.id];\n    msg.tgMethod='sendMessage';\n    msg.tgBody={chat_id:msg.chatId,text:'Про кого розповісти? Напиши імʼя',reply_markup:{inline_keyboard:[[{text:'❌ Скасувати',callback_data:'add_cancel'}]]}};\n    return [msg, msg];\n}\nmsg.query = `SELECT c.id, c.name, TO_CHAR(c.birthday,'DD.MM.YYYY') AS bd, c.interests, (MAKE_DATE(EXTRACT(YEAR FROM CURRENT_DATE)::INT, EXTRACT(MONTH FROM c.birthday)::INT, EXTRACT(DAY FROM c.birthday)::INT) - CURRENT_DATE) AS days_until, (SELECT COUNT(*)::INT FROM gift_ideas g WHERE g.contact_id=c.id AND g.status='saved') AS saved_gifts FROM contacts c WHERE c.owner_id=$1 AND (similarity(LOWER(c.name), LOWER($2)) > 0.3 OR LOWER(c.name) ILIKE '%' || LOWER($2) || '%') ORDER BY similarity(LOWER(c.name), LOWER($2)) DESC LIMIT 1`;\nmsg.params = [msg.from.id, name];\nreturn [msg, null];",
+    "outputs": 2,
+    "x": 340,
+    "y": 1120,
+    "wires": [
+      [
+        "ai-show-pg"
+      ],
+      [
+        "ai-send-detail"
+      ]
+    ]
+  },
+  {
+    "id": "ai-show-pg",
+    "type": "postgresql",
+    "z": "tab-ai-intent",
+    "name": "SELECT",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 560,
+    "y": 1120,
+    "wires": [
+      [
+        "ai-show-reply"
+      ]
+    ]
+  },
+  {
+    "id": "ai-show-reply",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "format detail",
+    "func": "if (!msg._intent || !msg._intent.name) return null;\nfunction esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\nconst rows = msg.payload || [];\nif (rows.length === 0) {\n    msg.tgMethod='sendMessage';\n    msg.tgBody={chat_id:msg.chatId,text:`🤷 Не знайшов «${esc(msg._intent.name)}» у твоїх контактах.`};\n    return msg;\n}\nconst r = rows[0];\nconst d = parseInt(r.days_until);\nconst when = d === 0 ? '🎉 <b>сьогодні!</b>' : d === 1 ? 'завтра' : d > 0 ? `через ${d} дн.` : `${-d} дн. тому`;\nconst interests = r.interests ? `\\n💡 <i>${esc(r.interests)}</i>` : '\\n<i>Інтереси ще не додані</i>';\nconst gifts = r.saved_gifts > 0 ? `\\n⭐ Збережено ідей: ${r.saved_gifts}` : '';\n\nmsg.tgMethod='sendMessage';\nmsg.tgBody={\n    chat_id: msg.chatId,\n    text: `👤 <b>${esc(r.name)}</b>\\n🎂 ${r.bd} (${when})${interests}${gifts}`,\n    parse_mode:'HTML',\n    reply_markup:{ inline_keyboard:[\n        [{text:'🎁 Ідеї подарунків', callback_data:'gift:'+r.id}],\n        [{text:'💡 '+(r.interests?'Змінити':'Додати')+' інтереси', callback_data:'interests:'+r.id}],\n        [{text:'🏠 Меню', callback_data:'menu_home'}]\n    ]}\n};\nreturn msg;",
+    "outputs": 1,
+    "x": 780,
+    "y": 1120,
+    "wires": [
+      [
+        "ai-send-detail"
+      ]
+    ]
+  },
+  {
+    "id": "ai-greet",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "greet",
+    "func": "function buildReply(o){\n  const b = { chat_id: o.chatId, parse_mode: \"HTML\" };\n  if (o.useEdit && o.messageId) b.message_id = o.messageId;\n  if (o.useEdit && o.photo) return { method: \"editMessageMedia\", body: Object.assign(b, { media: { type:\"photo\", media: o.photo, caption: o.text, parse_mode: \"HTML\" }, reply_markup: { inline_keyboard: o.keyboard } }) };\n  if (o.useEdit) return { method: \"editMessageText\", body: Object.assign(b, { text: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n  if (o.photo) return { method: \"sendPhoto\", body: Object.assign(b, { photo: o.photo, caption: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n  return { method: \"sendMessage\", body: Object.assign(b, { text: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n}\nfunction esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\nconst name = (msg.from && msg.from.first_name) || 'друже';\nconst reply = buildReply({\n    chatId: msg.chatId,\n    photo: env.get('MENU_PHOTO_URL'),\n    text: `👋 Привіт, <b>${esc(name)}</b>!\\n\\nЯ допоможу:\\n• запам'ятати ДН близьких\\n• нагадати за 7, 3, 1 день та у день\\n• запропонувати ідеї подарунків від AI 💡`,\n    keyboard: global.get('MENU_KB')\n});\nmsg.tgMethod = reply.method;\nmsg.tgBody = reply.body;\nreturn msg;",
+    "outputs": 1,
+    "x": 1880,
+    "y": 960,
+    "wires": [
+      [
+        "ai-send-simple"
+      ]
+    ]
+  },
+  {
+    "id": "ai-help",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "help response",
+    "func": "function buildReply(o){\n  const b = { chat_id: o.chatId, parse_mode: \"HTML\" };\n  if (o.useEdit && o.messageId) b.message_id = o.messageId;\n  if (o.useEdit && o.photo) return { method: \"editMessageMedia\", body: Object.assign(b, { media: { type:\"photo\", media: o.photo, caption: o.text, parse_mode: \"HTML\" }, reply_markup: { inline_keyboard: o.keyboard } }) };\n  if (o.useEdit) return { method: \"editMessageText\", body: Object.assign(b, { text: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n  if (o.photo) return { method: \"sendPhoto\", body: Object.assign(b, { photo: o.photo, caption: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n  return { method: \"sendMessage\", body: Object.assign(b, { text: o.text, reply_markup: { inline_keyboard: o.keyboard } }) };\n}\nconst reply = buildReply({\n    chatId: msg.chatId,\n    photo: env.get('MENU_PHOTO_HELP'),\n    text: global.get('HELP_TEXT'),\n    keyboard: global.get('BACK_KB')\n});\nmsg.tgMethod = reply.method;\nmsg.tgBody = reply.body;\nreturn msg;",
+    "outputs": 1,
+    "x": 2100,
+    "y": 960,
+    "wires": [
+      [
+        "ai-send-simple"
+      ]
+    ]
+  },
+  {
+    "id": "ai-unclear",
+    "type": "function",
+    "z": "tab-ai-intent",
+    "name": "unclear fallback",
+    "func": "msg.tgMethod='sendMessage';\nmsg.tgBody={\n    chat_id: msg.chatId,\n    text: '🤔 Не зрозумів. Спробуй:\\n• «додай Петра 15.03.1990»\\n• «коли у Олі ДН?»\\n• «що подарувати Тарасу?»\\n• «покажи всіх»',\n    reply_markup:{ inline_keyboard:[[{text:'🏠 Меню',callback_data:'menu_home'}]] }\n};\nreturn msg;",
+    "outputs": 1,
+    "x": 2320,
+    "y": 960,
+    "wires": [
+      [
+        "ai-send-simple"
+      ]
+    ]
+  },
+  {
+    "id": "c-ai-intent-title",
+    "type": "comment",
+    "z": "tab-ai-intent",
+    "name": "AI INTENT PARSER - free text to action",
+    "info": "",
+    "x": 270,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "ai-query-birthday-in",
+    "type": "link in",
+    "z": "tab-ai-intent",
+    "name": "query birthday in",
+    "links": [
+      "fsm-clarify-to-query"
+    ],
+    "x": 120,
+    "y": 480,
+    "wires": [
+      [
+        "ai-query-birthday"
+      ]
+    ]
+  },
+  {
+    "id": "ai-suggest-gift-in",
+    "type": "link in",
+    "z": "tab-ai-intent",
+    "name": "suggest gift in",
+    "links": [
+      "fsm-clarify-to-gift"
+    ],
+    "x": 120,
+    "y": 720,
+    "wires": [
+      [
+        "ai-suggest-gift"
+      ]
+    ]
+  },
+  {
+    "id": "ai-delete-contact-in",
+    "type": "link in",
+    "z": "tab-ai-intent",
+    "name": "delete contact in",
+    "links": [
+      "fsm-clarify-to-delete"
+    ],
+    "x": 120,
+    "y": 880,
+    "wires": [
+      [
+        "ai-delete-contact"
+      ]
+    ]
+  },
+  {
+    "id": "ai-show-detail-in",
+    "type": "link in",
+    "z": "tab-ai-intent",
+    "name": "contact detail in",
+    "links": [
+      "fsm-clarify-to-detail"
+    ],
+    "x": 120,
+    "y": 1120,
+    "wires": [
+      [
+        "ai-show-detail"
+      ]
+    ]
+  },
+  {
+    "id": "ai-intent-confirm-out",
+    "type": "link out",
+    "z": "tab-ai-intent",
+    "name": "show add confirmation",
+    "mode": "link",
+    "links": [
+      "fsm-ai-confirm-in"
+    ],
+    "x": 2320,
+    "y": 640,
+    "wires": []
+  },
+  {
+    "id": "ai-send-parser",
+    "type": "link out",
+    "z": "tab-ai-intent",
+    "name": "send parser feedback",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 1880,
+    "y": 240,
+    "wires": []
+  },
+  {
+    "id": "ai-send-query",
+    "type": "link out",
+    "z": "tab-ai-intent",
+    "name": "send birthday answer",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 1000,
+    "y": 480,
+    "wires": []
+  },
+  {
+    "id": "ai-send-gift-route",
+    "type": "link out",
+    "z": "tab-ai-intent",
+    "name": "send gift route reply",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 1220,
+    "y": 720,
+    "wires": []
+  },
+  {
+    "id": "ai-send-interest",
+    "type": "link out",
+    "z": "tab-ai-intent",
+    "name": "send interests reply",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 2540,
+    "y": 720,
+    "wires": []
+  },
+  {
+    "id": "ai-send-delete",
+    "type": "link out",
+    "z": "tab-ai-intent",
+    "name": "send delete reply",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 1000,
+    "y": 880,
+    "wires": []
+  },
+  {
+    "id": "ai-send-simple",
+    "type": "link out",
+    "z": "tab-ai-intent",
+    "name": "send simple reply",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 2540,
+    "y": 1040,
+    "wires": []
+  },
+  {
+    "id": "ai-send-detail",
+    "type": "link out",
+    "z": "tab-ai-intent",
+    "name": "send detail reply",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 1000,
+    "y": 1120,
+    "wires": []
+  },
+  {
+    "id": "ai-audit-interest",
+    "type": "link out",
+    "z": "tab-ai-intent",
+    "name": "audit interests",
+    "mode": "link",
+    "links": [
+      "audit-in"
+    ],
+    "x": 2540,
+    "y": 800,
+    "wires": []
+  },
+  {
+    "id": "c-gift-ai-title",
+    "type": "comment",
+    "z": "tab-gift-ai",
+    "name": "GIFT AI GENERATOR - generate, save, render",
+    "info": "",
+    "x": 260,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "ai-gift-in",
+    "type": "link in",
+    "z": "tab-gift-ai",
+    "name": "gift gen",
+    "links": [
+      "cb-gift-to-ai",
+      "ai-gift-in-internal"
+    ],
+    "x": 65,
+    "y": 160,
+    "wires": [
+      [
+        "ai-gift-validate"
+      ]
+    ]
+  },
+  {
+    "id": "ai-gift-validate",
+    "type": "function",
+    "z": "tab-gift-ai",
+    "name": "Validate + send typing",
+    "func": "const row = msg.payload && msg.payload[0];\nif (!row) {\n    msg.tgMethod='sendMessage';\n    msg.tgBody={chat_id:msg.chatId,text:'⚠️ Контакт не знайдено.'};\n    return [null, null, msg];\n}\nconst token = env.get('TOGETHER_API_KEY');\nif (!token) {\n    msg.tgMethod='sendMessage';\n    msg.tgBody={chat_id:msg.chatId,text:'🤖 AI недоступний (немає TOGETHER_API_KEY).'};\n    return [null, null, msg];\n}\n\nmsg._contact = row;\nmsg._token = token;\n\n// Вихід 1: typing action (fire-and-forget)\nconst typingMsg = {\n    tgMethod: 'sendChatAction',\n    tgBody: { chat_id: msg.chatId, action: 'typing' },\n    chatId: msg.chatId\n};\n\n// Вихід 2: placeholder message — треба отримати message_id\nconst placeholderMsg = Object.assign({}, msg, {\n    url: `${env.get('TELEGRAM_API_BASE')||'https://api.telegram.org'}/bot${env.get('TELEGRAM_BOT_TOKEN')}/sendMessage`,\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json' },\n    payload: {\n        chat_id: msg.chatId,\n        text: `🤖 Думаю над ідеями для <b>${row.name}</b>...\\n\\n<i>Це займе кілька секунд</i>`,\n        parse_mode: 'HTML'\n    }\n});\n\nreturn [typingMsg, placeholderMsg, null];",
+    "outputs": 3,
+    "x": 220,
+    "y": 160,
+    "wires": [
+      [
+        "gift-send-result"
+      ],
+      [
+        "ai-gift-placeholder-http"
+      ],
+      [
+        "gift-send-result"
+      ]
+    ]
+  },
+  {
+    "id": "ai-gift-placeholder-http",
+    "type": "http request",
+    "z": "tab-gift-ai",
+    "name": "POST placeholder",
+    "method": "use",
+    "ret": "obj",
+    "url": "",
+    "persist": false,
+    "x": 450,
+    "y": 160,
+    "wires": [
+      [
+        "ai-gift-load-prompt"
+      ]
+    ]
+  },
+  {
+    "id": "ai-gift-load-prompt",
+    "type": "function",
+    "z": "tab-gift-ai",
+    "name": "Save placeholder id + load prompt",
+    "func": "if (msg.payload && msg.payload.ok && msg.payload.result) {\n    msg._placeholderMsgId = msg.payload.result.message_id;\n}\nmsg.query = 'SELECT system_prompt, temperature, max_tokens FROM ai_prompts WHERE key = $1';\nmsg.params = ['gift_gen'];\nreturn msg;",
+    "outputs": 1,
+    "x": 720,
+    "y": 160,
+    "wires": [
+      [
+        "ai-gift-load-prompt-pg"
+      ]
+    ]
+  },
+  {
+    "id": "ai-gift-load-prompt-pg",
+    "type": "postgresql",
+    "z": "tab-gift-ai",
+    "name": "SELECT prompt",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 980,
+    "y": 200,
+    "wires": [
+      [
+        "ai-gift-prepare"
+      ]
+    ]
+  },
+  {
+    "id": "ai-gift-prepare",
+    "type": "function",
+    "z": "tab-gift-ai",
+    "name": "Build AI req (from DB prompt)",
+    "func": "const row = msg._contact;\nconst token = msg._token;\nconst model = env.get('AI_MODEL');\nif (!model) { node.error('AI_MODEL env var not set'); return null; }\n\n// Промпт з БД (fallback якщо недоступний)\nconst promptRow = (msg.payload && msg.payload[0]) || {};\nconst systemPrompt = promptRow.system_prompt || 'Ти — консультант з подарунків. Поверни JSON: {\"ideas\":[{\"title\",\"description\",\"price_range\"}]}';\nconst temperature = Number(promptRow.temperature) || 0.7;\nconst max_tokens = Number(promptRow.max_tokens) || 1000;\n\nconst interests = row.interests || 'не вказані';\nconst age = row.age || null;\nconst name = row.name;\n\nfunction detectGender(n) {\n    const clean = (n || '').trim().toLowerCase();\n    if (!clean) return 'unknown';\n    const male = ['петро','петра','іван','івана','олександр','саша','дмитро','дмитра','сергій','андрій','юрій','тарас','тараса','богдан','микола','миколи','володимир','володя','віктор','роман','назар','олег','василь','павло','степан','михайло','миша','артем','максим','денис','ярослав','ігор','віталій','антон','валентин','костянтин','кость','костя','александр','нікіта'];\n    const female = ['оля','ольга','марія','катерина','катя','ірина','іра','анна','аня','юлія','юля','наталія','наталя','тетяна','таня','світлана','вікторія','віка','оксана','христина','віра','галина','валентина','валя','людмила','ніна','олена','лена','лариса','анастасія','настя','софія','марина','маргарита','маша','даша','дарина','діана','аліна'];\n    if (male.includes(clean)) return 'male';\n    if (female.includes(clean)) return 'female';\n    if (/[^аеіиоуюяїй]$/i.test(clean)) return 'male';\n    if (/[ой]$/i.test(clean)) return 'male';\n    return 'unknown';\n}\n\nconst gender = detectGender(name);\nmsg._detectedGender = gender;\nnode.warn(`[GIFT AI] model=${model} name=${name} gender=${gender}`);\n\nconst genderLine = gender === 'male'\n    ? 'СТАТЬ: ЧОЛОВІК. Всі подарунки мають бути ЧОЛОВІЧИМИ. ЗАБОРОНЕНО: жіночі парфуми, косметика, жіночі сумки, плаття.'\n    : gender === 'female'\n    ? 'СТАТЬ: ЖІНКА. Всі подарунки мають бути ЖІНОЧИМИ. ЗАБОРОНЕНО: чоловічі парфуми, інструменти для гоління.'\n    : `СТАТЬ: САМ ВИЗНАЧ з імені \"${name}\". Українські чоловічі імена можуть мати форму на -а (Петра=Петро, Тараса=Тарас). Якщо невпевнений — UNISEX.`;\n\nconst userPrompt = [\n    `Ім'я: ${name}`,\n    age ? `Вік: ${age} років` : 'Вік: невідомий',\n    genderLine,\n    `Інтереси: ${interests}`,\n    '',\n    'Згенеруй 4 ідеї подарунків.'\n].join('\\n');\n\nmsg.url = 'https://api.together.xyz/v1/chat/completions';\nmsg.method = 'POST';\nmsg.headers = { 'Content-Type':'application/json', 'Authorization': `Bearer ${token}` };\nmsg.payload = {\n    model,\n    temperature,\n    top_p: 0.9,\n    max_tokens,\n    response_format: { type: 'json_object' },\n    messages: [\n        { role:'system', content: systemPrompt },\n        { role:'user',   content: userPrompt }\n    ]\n};\nreturn msg;",
+    "outputs": 1,
+    "x": 210,
+    "y": 320,
+    "wires": [
+      [
+        "ai-gift-http"
+      ]
+    ]
+  },
+  {
+    "id": "ai-gift-http",
+    "type": "http request",
+    "z": "tab-gift-ai",
+    "name": "POST Together",
+    "method": "use",
+    "ret": "obj",
+    "url": "",
+    "persist": false,
+    "x": 560,
+    "y": 320,
+    "wires": [
+      [
+        "ai-gift-parse"
+      ]
+    ]
+  },
+  {
+    "id": "ai-gift-parse",
+    "type": "function",
+    "z": "tab-gift-ai",
+    "name": "Parse + prepare inserts",
+    "func": "let ideas = [];\nlet rawContent = null;\n\ntry {\n    if (msg.payload && msg.payload.error) {\n        node.warn('[GIFT AI] API error: ' + JSON.stringify(msg.payload.error));\n    }\n    rawContent = msg.payload && msg.payload.choices && msg.payload.choices[0] && msg.payload.choices[0].message && msg.payload.choices[0].message.content;\n    if (rawContent) {\n        node.warn('[GIFT AI RAW] ' + rawContent.slice(0, 500));\n        // Спроба 1: прямий JSON\n        try {\n            const parsed = JSON.parse(rawContent);\n            if (Array.isArray(parsed.ideas)) ideas = parsed.ideas.slice(0, 4);\n        } catch (e1) {\n            // Спроба 2: витягнути JSON з markdown-обгортки ```json...```\n            const m = rawContent.match(/\\{[\\s\\S]*\\}/);\n            if (m) {\n                try {\n                    const parsed = JSON.parse(m[0]);\n                    if (Array.isArray(parsed.ideas)) ideas = parsed.ideas.slice(0, 4);\n                } catch (e2) {\n                    node.warn('[GIFT AI] JSON extract fail: '+e2.message);\n                }\n            } else {\n                node.warn('[GIFT AI] No JSON found: '+e1.message);\n            }\n        }\n    } else {\n        node.warn('[GIFT AI] Empty response. Full payload: ' + JSON.stringify(msg.payload).slice(0, 500));\n    }\n} catch (e) { node.warn('AI gift parse fail: '+e.message); }\n\nnode.warn('[GIFT AI] ideas count: '+ideas.length);\n\nif (ideas.length === 0) {\n    msg.tgMethod='sendMessage';\n    msg.tgBody={chat_id:msg.chatId,text:'🤖 AI не зміг згенерувати ідеї. Спробуй ще раз пізніше або додай інтереси детальніше.'};\n    return [null, msg, msg];\n}\n\nmsg._ideas = ideas;\nconst c = msg._contact;\n\n// Batch INSERT з параметрами у масиві — підтримує до 4 ідей\n// Використовуємо UNNEST для акуратного multi-row insert\nmsg.query = `\n    INSERT INTO gift_ideas (contact_id, owner_id, title, description, price_range, status, source)\n    SELECT $1, $2, t, d, p, 'suggested', 'ai'\n    FROM UNNEST($3::text[], $4::text[], $5::text[]) AS u(t, d, p)\n    RETURNING id, title, description, price_range\n`;\nmsg.params = [\n    c.id,\n    msg.from.id || c.owner_id,\n    ideas.map(i => String(i.title || '').slice(0, 200)),\n    ideas.map(i => String(i.description || '').slice(0, 1000)),\n    ideas.map(i => String(i.price_range || '').slice(0, 50))\n];\nreturn [msg, null, msg];",
+    "outputs": 3,
+    "x": 870,
+    "y": 320,
+    "wires": [
+      [
+        "ai-gift-pg-insert"
+      ],
+      [
+        "gift-send-result"
+      ],
+      [
+        "dbg-gift-raw"
+      ]
+    ]
+  },
+  {
+    "id": "dbg-gift-raw",
+    "type": "debug",
+    "z": "tab-gift-ai",
+    "name": "DBG: gift AI raw",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "complete": "_ideas",
+    "targetType": "msg",
+    "x": 980,
+    "y": 420,
+    "wires": []
+  },
+  {
+    "id": "ai-gift-pg-insert",
+    "type": "postgresql",
+    "z": "tab-gift-ai",
+    "name": "INSERT gift_ideas",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1230,
+    "y": 360,
+    "wires": [
+      [
+        "ai-gift-reply"
+      ]
+    ]
+  },
+  {
+    "id": "ai-gift-reply",
+    "type": "function",
+    "z": "tab-gift-ai",
+    "name": "format reply (edit placeholder)",
+    "func": "function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\nconst ideas = msg.payload || [];\nconst c = msg._contact;\nconst placeholderId = msg._placeholderMsgId;\n\nconst base = { chat_id: msg.chatId, parse_mode: 'HTML' };\nconst useEdit = !!placeholderId;\nif (useEdit) base.message_id = placeholderId;\n\nif (ideas.length === 0) {\n    msg.tgMethod = useEdit ? 'editMessageText' : 'sendMessage';\n    msg.tgBody = Object.assign(base, { text: '⚠️ Не вдалось згенерувати ідеї. Спробуй ще раз пізніше.', reply_markup: { inline_keyboard: [[{ text:'🏠 Меню', callback_data:'menu_home' }]]} });\n    return msg;\n}\n\nconst lines = [`🎁 <b>Ідеї подарунків для ${esc(c.name)}:</b>`, ''];\nconst saveRow = [];\nideas.forEach((i, idx) => {\n    lines.push(`<b>${idx+1}. ${esc(i.title)}</b>`);\n    if (i.price_range) lines.push(`💰 ${esc(i.price_range)}`);\n    if (i.description) lines.push(`<i>${esc(i.description)}</i>`);\n    lines.push('');\n    saveRow.push({ text: `⭐ ${idx+1}`, callback_data: 'gift_save:'+i.id });\n});\nlines.push('<i>⭐ — зберегти ідею</i>');\nconst kb = [\n    saveRow,\n    [{ text:'🔄 Інші ідеї', callback_data:'gift:'+c.id }, { text:'🏠 Меню', callback_data:'menu_home' }]\n];\n\nmsg.tgMethod = useEdit ? 'editMessageText' : 'sendMessage';\nmsg.tgBody = Object.assign(base, { text: lines.join('\\n'), reply_markup:{ inline_keyboard: kb } });\nmsg.auditAction='gift_generated';\nmsg.auditEntityType='contact';\nmsg.auditEntityId=c.id;\nmsg.auditPayload={count: ideas.length};\nreturn [msg, msg];",
+    "outputs": 2,
+    "x": 1410,
+    "y": 220,
+    "wires": [
+      [
+        "gift-send-result"
+      ],
+      [
+        "gift-audit-result"
+      ]
+    ]
+  },
+  {
+    "id": "gift-send-result",
+    "type": "link out",
+    "z": "tab-gift-ai",
+    "name": "send gift result",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 1345,
+    "y": 160,
+    "wires": []
+  },
+  {
+    "id": "gift-audit-result",
+    "type": "link out",
+    "z": "tab-gift-ai",
+    "name": "audit generated gifts",
+    "mode": "link",
+    "links": [
+      "audit-in"
+    ],
+    "x": 1455,
+    "y": 360,
+    "wires": []
+  },
+  {
+    "id": "c-sender-title",
+    "type": "comment",
+    "z": "tab-sender",
+    "name": "TELEGRAM SENDER — централізований вихід",
+    "info": "Retry на 429, deactivate на 403",
+    "x": 120,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "sender-in",
+    "type": "link in",
+    "z": "tab-sender",
+    "name": "outbound",
+    "links": [
+      "cmd-to-sender",
+      "rem-to-sender",
+      "catch-to-sender",
+      "cb-send-nav",
+      "cb-send-render",
+      "cb-send-add",
+      "cb-send-contact",
+      "cb-send-gift",
+      "fsm-send-dialog",
+      "fsm-send-clarify",
+      "fsm-send-interests",
+      "fsm-send-refine",
+      "ai-send-parser",
+      "ai-send-query",
+      "ai-send-gift-route",
+      "ai-send-interest",
+      "ai-send-delete",
+      "ai-send-simple",
+      "ai-send-detail",
+      "gift-send-result"
+    ],
+    "x": 120,
+    "y": 180,
+    "wires": [
+      [
+        "sender-build"
+      ]
+    ]
+  },
+  {
+    "id": "sender-build",
+    "type": "function",
+    "z": "tab-sender",
+    "name": "Build request",
+    "func": "const token = env.get('TELEGRAM_BOT_TOKEN');\nif (!token) { node.error('TELEGRAM_BOT_TOKEN missing'); return null; }\nif (!msg.tgMethod) { node.error('tgMethod missing'); return null; }\nmsg.url = `${env.get('TELEGRAM_API_BASE')||'https://api.telegram.org'}/bot${token}/${msg.tgMethod}`;\nmsg.method = 'POST';\nmsg.headers = { 'Content-Type': 'application/json' };\nmsg.payload = msg.tgBody;\nreturn msg;",
+    "outputs": 1,
+    "x": 340,
+    "y": 180,
+    "wires": [
+      [
+        "sender-http"
+      ]
+    ]
+  },
+  {
+    "id": "sender-http",
+    "type": "http request",
+    "z": "tab-sender",
+    "name": "POST Telegram",
+    "method": "use",
+    "ret": "obj",
+    "url": "",
+    "x": 560,
+    "y": 180,
+    "wires": [
+      [
+        "sender-check"
+      ]
+    ]
+  },
+  {
+    "id": "sender-check",
+    "type": "function",
+    "z": "tab-sender",
+    "name": "Check response",
+    "func": "if (msg.payload && msg.payload.ok) return null;\nconst sc = msg.statusCode || 0;\nconst body = msg.payload || {};\nconst desc = body.description || '';\n\n// 400 коли контент однаковий — ігноруємо\nif (sc === 400 && desc.includes('message is not modified')) return null;\n\n// 400 на deleteMessage — бот не може видалити чуже повідомлення, ігноруємо\nif (msg.tgMethod === 'deleteMessage' && (sc === 400 || sc === 403)) return null;\n\n// 400 editMessageText на фото — fallback на editMessageCaption (retry через sender-build)\nif (sc === 400 && desc.includes('no text in the message to edit') && msg.tgMethod === 'editMessageText' && msg.tgBody && !msg._retryAsCaption) {\n    node.warn('[Sender] Photo message detected, retry as editMessageCaption');\n    const orig = msg.tgBody;\n    msg.tgMethod = 'editMessageCaption';\n    msg.tgBody = {\n        chat_id: orig.chat_id,\n        message_id: orig.message_id,\n        caption: orig.text,\n        parse_mode: orig.parse_mode || 'HTML',\n        reply_markup: orig.reply_markup\n    };\n    msg._retryAsCaption = true;\n    return [null, msg];\n}\n\nnode.warn(`Telegram ${msg.tgMethod} ${sc} ${JSON.stringify(body).slice(0,200)}`);\nmsg._tgError = { statusCode: sc, body };\nreturn [msg, null];",
+    "outputs": 2,
+    "x": 780,
+    "y": 180,
+    "wires": [
+      [
+        "sender-error-route"
+      ],
+      [
+        "sender-build"
+      ]
+    ]
+  },
+  {
+    "id": "sender-error-route",
+    "type": "switch",
+    "z": "tab-sender",
+    "name": "error code",
+    "property": "_tgError.statusCode",
+    "propertyType": "msg",
+    "rules": [
+      {
+        "t": "eq",
+        "v": "429",
+        "vt": "num"
+      },
+      {
+        "t": "eq",
+        "v": "403",
+        "vt": "num"
+      },
+      {
+        "t": "else"
+      }
+    ],
+    "outputs": 3,
+    "x": 1000,
+    "y": 180,
+    "wires": [
+      [
+        "sender-429"
+      ],
+      [
+        "sender-403"
+      ],
+      [
+        "sender-other"
+      ]
+    ]
+  },
+  {
+    "id": "sender-429",
+    "type": "function",
+    "z": "tab-sender",
+    "name": "429 retry",
+    "func": "msg._retryCount = (msg._retryCount || 0) + 1;\nif (msg._retryCount > 3) { node.warn(`[Sender] 429 give up after 3 retries chat=${msg.chatId} method=${msg.tgMethod}`); return null; }\nconst ra = (msg._tgError.body.parameters && msg._tgError.body.parameters.retry_after) || 1;\nmsg.delay = Math.min(ra, 30) * 1000;\nreturn msg;",
+    "outputs": 1,
+    "x": 1000,
+    "y": 100,
+    "wires": [
+      [
+        "sender-delay"
+      ]
+    ]
+  },
+  {
+    "id": "sender-delay",
+    "type": "delay",
+    "z": "tab-sender",
+    "name": "var delay",
+    "pauseType": "delayv",
+    "timeout": "1",
+    "timeoutUnits": "seconds",
+    "outputs": 1,
+    "x": 1220,
+    "y": 100,
+    "wires": [
+      [
+        "sender-build"
+      ]
+    ]
+  },
+  {
+    "id": "sender-403",
+    "type": "function",
+    "z": "tab-sender",
+    "name": "403 deactivate",
+    "func": "msg.query = 'UPDATE users SET is_active=FALSE WHERE telegram_id=$1';\nmsg.params = [msg.chatId];\nreturn msg;",
+    "outputs": 1,
+    "x": 1000,
+    "y": 260,
+    "wires": [
+      [
+        "sender-403-pg"
+      ]
+    ]
+  },
+  {
+    "id": "sender-403-pg",
+    "type": "postgresql",
+    "z": "tab-sender",
+    "name": "UPDATE users",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1220,
+    "y": 260,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "sender-other",
+    "type": "debug",
+    "z": "tab-sender",
+    "name": "other err",
+    "active": true,
+    "complete": "_tgError",
+    "targetType": "msg",
+    "x": 1000,
+    "y": 340,
+    "wires": []
+  },
+  {
+    "id": "c-rem-title",
+    "type": "comment",
+    "z": "tab-reminders",
+    "name": "SCHEDULED REMINDERS (tz-aware)",
+    "info": "",
+    "x": 120,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "rem-cron",
+    "type": "inject",
+    "z": "tab-reminders",
+    "name": "every 15 min",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "900",
+    "once": false,
+    "payloadType": "date",
+    "x": 120,
+    "y": 160,
+    "wires": [
+      [
+        "rem-query"
+      ]
+    ]
+  },
+  {
+    "id": "rem-query",
+    "type": "function",
+    "z": "tab-reminders",
+    "name": "Query due + saved gifts",
+    "func": "// Додаємо saved gifts per contact щоб запитати чи купив\nmsg.query = `\n    SELECT\n        v.*,\n        COALESCE(\n            (SELECT jsonb_agg(jsonb_build_object('id', g.id, 'title', g.title, 'price_range', g.price_range))\n             FROM gift_ideas g\n             WHERE g.contact_id = v.contact_id AND g.status = 'saved'),\n            '[]'::jsonb\n        ) AS saved_gifts\n    FROM v_due_reminders v\n`;\nmsg.params = [];\nreturn msg;",
+    "outputs": 1,
+    "x": 340,
+    "y": 160,
+    "wires": [
+      [
+        "rem-pg"
+      ]
+    ]
+  },
+  {
+    "id": "rem-pg",
+    "type": "postgresql",
+    "z": "tab-reminders",
+    "name": "SELECT due",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 560,
+    "y": 160,
+    "wires": [
+      [
+        "rem-split"
+      ]
+    ]
+  },
+  {
+    "id": "rem-split",
+    "type": "split",
+    "z": "tab-reminders",
+    "name": "split",
+    "arraySplt": 1,
+    "arraySpltType": "len",
+    "x": 780,
+    "y": 160,
+    "wires": [
+      [
+        "rem-throttle"
+      ]
+    ]
+  },
+  {
+    "id": "rem-throttle",
+    "type": "delay",
+    "z": "tab-reminders",
+    "name": "throttle 20/s",
+    "pauseType": "rate",
+    "timeout": "5",
+    "timeoutUnits": "seconds",
+    "rate": "20",
+    "nbRateUnits": "1",
+    "rateUnits": "second",
+    "randomFirst": "1",
+    "randomLast": "5",
+    "randomUnits": "seconds",
+    "drop": false,
+    "allowrate": false,
+    "outputs": 1,
+    "x": 890,
+    "y": 160,
+    "wires": [
+      [
+        "rem-format"
+      ]
+    ]
+  },
+  {
+    "id": "rem-format",
+    "type": "function",
+    "z": "tab-reminders",
+    "name": "Format (stage + saved gifts)",
+    "func": "function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\nconst r = msg.payload;\nmsg.chatId = r.owner_id;\nconst dBefore = Number(r.days_before);\nconst name = esc(r.contact_name);\nconst age = r.turning_age;\nconst saved = Array.isArray(r.saved_gifts) ? r.saved_gifts : [];\n\nlet lines = [];\nconst kb = [];\n\nif (dBefore === 0) {\n    lines.push(`🎂 <b>Сьогодні ДН у ${name}!</b>\\nВіку: <b>${age}</b> 🎉`);\n} else if (dBefore === 1) {\n    lines.push(`⏰ <b>Завтра ДН у ${name}!</b>\\nПідготуй вітання — ${age} років.`);\n} else {\n    lines.push(`📅 <b>Через ${dBefore} дн. ДН у ${name}</b> (${age} років).`);\n}\n\n// Якщо є збережені ідеї — питаємо чи купив\nif (saved.length > 0) {\n    lines.push('');\n    lines.push('🎁 <b>Ти планував купити:</b>');\n    saved.forEach((g, i) => {\n        lines.push(`${i+1}. <b>${esc(g.title)}</b>${g.price_range ? ' • '+esc(g.price_range) : ''}`);\n        kb.push([\n            { text: `✅ Купив ${i+1}`,      callback_data: 'gift_buy:'+g.id },\n            { text: `❌ Ще ні ${i+1}`,      callback_data: 'noop' }\n        ]);\n    });\n    lines.push('');\n    lines.push('<i>Натисни ✅ коли купиш</i>');\n} else {\n    lines.push('');\n    lines.push('💡 Ще не обрав подарунок?');\n    kb.push([{ text:'🎁 Отримати AI-ідеї', callback_data:'gift:'+r.contact_id }]);\n}\n\nkb.push([{ text:'👤 Деталі', callback_data:'contact:'+r.contact_id }, { text:'🏠 Меню', callback_data:'menu_home' }]);\n\nmsg.tgMethod = 'sendMessage';\nmsg.tgBody = { chat_id: r.owner_id, text: lines.join('\\n'), parse_mode:'HTML', reply_markup:{ inline_keyboard: kb } };\nmsg._remind = { contact_id: r.contact_id, owner_id: r.owner_id, remind_year: r.remind_year, days_before: dBefore };\nreturn msg;",
+    "outputs": 1,
+    "x": 1000,
+    "y": 160,
+    "wires": [
+      [
+        "rem-log",
+        "rem-to-sender"
+      ]
+    ]
+  },
+  {
+    "id": "rem-log",
+    "type": "function",
+    "z": "tab-reminders",
+    "name": "Log (idempotent)",
+    "func": "const r = msg._remind;\nmsg.query = `INSERT INTO reminders_log (contact_id, owner_id, remind_year, days_before) VALUES ($1,$2,$3,$4) ON CONFLICT (contact_id, remind_year, days_before) DO NOTHING`;\nmsg.params = [r.contact_id, r.owner_id, r.remind_year, r.days_before];\nreturn msg;",
+    "outputs": 1,
+    "x": 1000,
+    "y": 260,
+    "wires": [
+      [
+        "rem-log-pg"
+      ]
+    ]
+  },
+  {
+    "id": "rem-log-pg",
+    "type": "postgresql",
+    "z": "tab-reminders",
+    "name": "INSERT log",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 1220,
+    "y": 260,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "rem-to-sender",
+    "type": "link out",
+    "z": "tab-reminders",
+    "name": "→ sender",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 1220,
+    "y": 160,
+    "wires": []
+  },
+  {
+    "id": "c-err-title",
+    "type": "comment",
+    "z": "tab-errors",
+    "name": "ERRORS + AUDIT",
+    "info": "",
+    "x": 120,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "audit-in",
+    "type": "link in",
+    "z": "tab-errors",
+    "name": "audit event",
+    "links": [
+      "audit-out",
+      "cb-audit-add",
+      "cb-audit-contact",
+      "cb-audit-gift",
+      "ai-audit-interest",
+      "gift-audit-result"
+    ],
+    "x": 120,
+    "y": 160,
+    "wires": [
+      [
+        "audit-prepare"
+      ]
+    ]
+  },
+  {
+    "id": "audit-prepare",
+    "type": "function",
+    "z": "tab-errors",
+    "name": "Build audit insert",
+    "func": "if (!msg.auditAction) return null;\nmsg.query = `INSERT INTO audit_log (telegram_id, action, entity_type, entity_id, payload) VALUES ($1,$2,$3,$4,$5)`;\nmsg.params = [\n    msg.from ? msg.from.id : null,\n    msg.auditAction,\n    msg.auditEntityType || null,\n    msg.auditEntityId || null,\n    msg.auditPayload ? JSON.stringify(msg.auditPayload) : null\n];\nreturn msg;",
+    "outputs": 1,
+    "x": 340,
+    "y": 160,
+    "wires": [
+      [
+        "audit-pg"
+      ]
+    ]
+  },
+  {
+    "id": "audit-pg",
+    "type": "postgresql",
+    "z": "tab-errors",
+    "name": "INSERT audit_log",
+    "query": "",
+    "postgreSQLConfig": "pg-config",
+    "outputs": 1,
+    "x": 560,
+    "y": 160,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "global-catch",
+    "type": "catch",
+    "z": "tab-errors",
+    "name": "global catch",
+    "scope": null,
+    "uncaught": false,
+    "x": 120,
+    "y": 280,
+    "wires": [
+      [
+        "catch-log"
+      ]
+    ]
+  },
+  {
+    "id": "catch-log",
+    "type": "function",
+    "z": "tab-errors",
+    "name": "Log + alert admin",
+    "func": "const err = msg.error || {};\nnode.error(`[CAUGHT] ${err.message} | ${(err.source||{}).id}`, msg);\nconst adminId = env.get('ADMIN_TELEGRAM_ID');\nif (!adminId) return null;\nmsg.chatId = Number(adminId);\nmsg.tgMethod = 'sendMessage';\nmsg.tgBody = { chat_id: Number(adminId), text: `⚠️ <b>Bot error</b>\\n<code>${String(err.message||'').slice(0,300)}</code>\\nsource: <code>${(err.source||{}).id || '-'}</code>`, parse_mode:'HTML' };\nreturn msg;",
+    "outputs": 1,
+    "x": 340,
+    "y": 280,
+    "wires": [
+      [
+        "catch-to-sender"
+      ]
+    ]
+  },
+  {
+    "id": "catch-to-sender",
+    "type": "link out",
+    "z": "tab-errors",
+    "name": "→ sender",
+    "mode": "link",
+    "links": [
+      "sender-in"
+    ],
+    "x": 560,
+    "y": 280,
+    "wires": []
+  },
+  {
+    "id": "8deca939cebf71e6",
+    "type": "global-config",
+    "env": [],
+    "modules": {
+      "node-red-contrib-postgresql": "0.15.4"
+    }
+  }
+]

@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: birthday-bot-db
+    environment:
+      POSTGRES_DB: birthday_bot
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      TZ: Europe/Kyiv
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d birthday_bot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "5434:5432"
+    restart: unless-stopped
+
+  nodered:
+    build: ./nodered
+    image: birthday-bot-nodered:local
+    container_name: birthday-bot-nodered
+    ports:
+      - "1881:1880"
+    volumes:
+      - nodered_data:/data
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TOGETHER_API_KEY=${TOGETHER_API_KEY}
+      - AI_MODEL=${AI_MODEL}
+      - MENU_PHOTO_URL=${MENU_PHOTO_URL:-}
+      - MENU_PHOTO_LIST=${MENU_PHOTO_LIST:-}
+      - MENU_PHOTO_UPCOMING=${MENU_PHOTO_UPCOMING:-}
+      - MENU_PHOTO_HELP=${MENU_PHOTO_HELP:-}
+      - MENU_PHOTO_GIFT=${MENU_PHOTO_GIFT:-}
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGDATABASE=birthday_bot
+      - PGUSER=postgres
+      - PGPASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - ADMIN_TELEGRAM_ID=${ADMIN_TELEGRAM_ID}
+      - TZ=Europe/Kyiv
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  nodered_data:

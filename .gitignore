@@ -1,0 +1,8 @@
+.env
+*.log
+node_modules/
+pgdata/
+nodered_data/
+.DS_Store
+test/
+docker-compose.test.yml
