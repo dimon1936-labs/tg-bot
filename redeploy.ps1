@@ -1,4 +1,15 @@
 $flowsPath = Join-Path $PSScriptRoot "flows.json"
+$envPath   = Join-Path $PSScriptRoot ".env"
+if (Test-Path $envPath) {
+    Get-Content $envPath | ForEach-Object {
+        if ($_ -match '^\s*([^#=\s]+)\s*=\s*(.*)\s*$') {
+            $k = $matches[1]; $v = $matches[2] -replace '^["'']|["'']$',''
+            if (-not [Environment]::GetEnvironmentVariable($k)) {
+                Set-Item -Path "env:$k" -Value $v
+            }
+        }
+    }
+}
 $host_   = if ($env:NODE_RED_HOST) { $env:NODE_RED_HOST } else { "http://localhost:1881" }
 $user    = if ($env:NODE_RED_USER) { $env:NODE_RED_USER } else { "admin" }
 if (-not $env:NODE_RED_PASS) { Write-Host "Set NODE_RED_PASS env var" -ForegroundColor Red; exit 1 }

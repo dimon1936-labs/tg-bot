@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-FLOWS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/flows.json"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FLOWS="$DIR/flows.json"
+
+if [ -f "$DIR/.env" ]; then
+    set -a
+    . "$DIR/.env"
+    set +a
+fi
+
 HOST="${NODE_RED_HOST:-http://localhost:1881}"
 USER="${NODE_RED_USER:-admin}"
 PASS="${NODE_RED_PASS:?set NODE_RED_PASS env var (Node-RED admin password)}"

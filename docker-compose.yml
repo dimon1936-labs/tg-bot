@@ -27,6 +27,7 @@ services:
       - "1881:1880"
     volumes:
       - nodered_data:/data
+      - ./nodered/settings.js:/data/settings.js:ro
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TOGETHER_API_KEY=${TOGETHER_API_KEY}
