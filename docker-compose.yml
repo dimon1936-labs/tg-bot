@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: birthday_bot
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       TZ: Europe/Kyiv
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -41,7 +41,7 @@ services:
       - PGPORT=5432
       - PGDATABASE=birthday_bot
       - PGUSER=postgres
-      - PGPASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - PGPASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       - ADMIN_TELEGRAM_ID=${ADMIN_TELEGRAM_ID}
       - TZ=Europe/Kyiv
     extra_hosts:
